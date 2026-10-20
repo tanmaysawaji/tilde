@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Start",
+  "version": "1.0",
+  "description": "A personal new tab page with shortcuts and search.",
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "permissions": ["favicon", "search"]
+}

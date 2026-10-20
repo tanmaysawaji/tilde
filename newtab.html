@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Tab</title>
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <main class="shell">
+    <form class="prompt" id="search" role="search" autocomplete="off">
+      <div class="line">
+        <span class="segment">&nbsp;~&nbsp;</span><span class="cap" aria-hidden="true"></span>
+        <span class="fill" id="fill" aria-hidden="true"></span>
+        <span class="now"><span class="date" id="date"></span><time id="time"></time></span>
+        <span class="corner" aria-hidden="true">─╮</span>
+      </div>
+      <div class="line">
+        <span class="char" aria-hidden="true">❯</span>
+        <input id="q" type="text" spellcheck="false" autofocus
+               placeholder="Search or type a URL"
+               aria-label="Search the web or enter an address">
+        <span class="corner" aria-hidden="true">─╯</span>
+      </div>
+    </form>
+    <nav class="sites" id="sites" aria-label="Shortcuts"></nav>
+  </main>
+  <script src="links.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

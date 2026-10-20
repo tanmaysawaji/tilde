@@ -1,0 +1,161 @@
+/* Catppuccin Mocha, matched to the terminal (Crust background) */
+:root {
+  --crust: #11111b;
+  --mantle: #181825;
+  --surface0: #313244;
+  --surface2: #585b70;
+  --overlay1: #7f849c;
+  --subtext0: #a6adc8;
+  --text: #cdd6f4;
+  --sapphire: #74c7ec;
+  --green: #a6e3a1;
+  --mauve: #cba6f7;
+  --rosewater: #f5e0dc;
+  --font: "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--crust);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+body { display: flex; justify-content: center; }
+
+.shell {
+  width: min(1000px, 100% - 64px);
+  margin-top: 24vh;
+}
+
+/* The search bar is drawn like the Starship prompt */
+.prompt {
+  font-size: clamp(18px, 1.25vw, 26px);
+  line-height: 1.7;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.segment {
+  background: var(--surface0);
+  color: var(--sapphire);
+  font-weight: 700;
+}
+
+.cap::before {
+  content: "\e0b0";
+  color: var(--surface0);
+}
+
+.fill {
+  flex: 1;
+  min-width: 2ch;
+  overflow: hidden;
+  margin-left: 1ch;
+  color: var(--surface2);
+}
+
+.now {
+  padding: 0 1ch;
+  color: var(--text);
+}
+
+.now .date {
+  color: var(--overlay1);
+  margin-right: 1.5ch;
+}
+
+.corner { color: var(--surface2); }
+
+.prompt:focus-within .fill,
+.prompt:focus-within .corner { color: var(--overlay1); }
+
+.char {
+  color: var(--green);
+  margin-right: 1ch;
+}
+
+#q {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  caret-color: var(--rosewater);
+}
+
+#q::placeholder { color: var(--surface2); }
+
+/* Shortcuts */
+.sites {
+  margin-top: 88px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.site {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 6px 14px;
+  border-radius: 14px;
+  color: var(--subtext0);
+  font-size: 15px;
+  text-decoration: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.site:hover {
+  background: rgba(49, 50, 68, 0.55);
+  color: var(--text);
+}
+
+.site:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  background: var(--mantle);
+  display: grid;
+  place-items: center;
+}
+
+.icon img { width: 40px; height: 40px; }
+
+.icon .letter {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.site .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .now .date { display: none; }
+  .shell { margin-top: 14vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site { transition: none; }
+}
