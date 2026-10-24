@@ -45,17 +45,37 @@ export function defaultName(url) {
  * the URL or name is already saved.
  */
 export function addSite(sites, { url, name, icon }, makeId = () => crypto.randomUUID()) {
+  const checked = checkSite(sites, url, name);
+  if (checked.error) return checked;
+  const site = { id: makeId(), name: checked.name, url: checked.url, icon: icon || null };
+  return { sites: [...sites, site], site };
+}
+
+/**
+ * Changes the name and URL of the site with this `id`, with the same checks as
+ * `addSite` (other than against the site itself). Returns `{ sites, site }` with a new
+ * array, or `{ error }`.
+ */
+export function updateSite(sites, id, { url, name }) {
+  const index = sites.findIndex((s) => s.id === id);
+  if (index === -1) return { error: "that site no longer exists" };
+  const checked = checkSite(sites.filter((s) => s.id !== id), url, name);
+  if (checked.error) return checked;
+  const site = { ...sites[index], name: checked.name, url: checked.url };
+  return { sites: sites.with(index, site), site };
+}
+
+function checkSite(others, url, name) {
+  if (!url?.trim()) return { error: "a URL is required" };
   const href = normalizeUrl(url);
   if (!href) return { error: `not a web address: ${url}` };
 
-  const sameUrl = sites.find((s) => s.url === href);
+  const sameUrl = others.find((s) => s.url === href);
   if (sameUrl) return { error: `already saved as ${sameUrl.name}` };
 
   const finalName = name?.trim() || defaultName(href);
-  if (findByName(sites, finalName)) return { error: `a site named ${finalName} already exists` };
-
-  const site = { id: makeId(), name: finalName, url: href, icon: icon || null };
-  return { sites: [...sites, site], site };
+  if (findSiteByName(others, finalName)) return { error: `a site named ${finalName} already exists` };
+  return { url: href, name: finalName };
 }
 
 /**
@@ -63,12 +83,13 @@ export function addSite(sites, { url, name, icon }, makeId = () => crypto.random
  * Returns `{ sites, site }` with a new array, or `{ error }` if no site has that name.
  */
 export function removeSite(sites, name) {
-  const site = findByName(sites, name);
+  const site = findSiteByName(sites, name);
   if (!site) return { error: `no site named ${name.trim()}` };
   return { sites: sites.filter((s) => s !== site), site };
 }
 
-function findByName(sites, name) {
+/** The site with this name (case-insensitive), or undefined. */
+export function findSiteByName(sites, name) {
   const wanted = name.trim().toLowerCase();
   return sites.find((s) => s.name.toLowerCase() === wanted);
 }

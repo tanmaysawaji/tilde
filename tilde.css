@@ -177,12 +177,57 @@ body { display: flex; justify-content: center; }
   transition: background-color 0.15s, color 0.15s;
 }
 
-.site:hover {
+/* Hover is on the tile, so the highlight stays while the pointer is on the edit button */
+.tile:hover .site,
+.add-tile:hover {
   background: rgba(49, 50, 68, 0.55);
   color: var(--text);
 }
 
-.site:focus-visible {
+.tile {
+  position: relative;
+  display: grid;
+}
+
+.tile .edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface0);
+  color: var(--subtext0);
+  font-family: var(--font);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tile:hover .edit,
+.tile:focus-within .edit { opacity: 1; }
+
+.tile .edit:hover { color: var(--text); }
+
+.add-tile {
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.add-tile .icon {
+  color: var(--overlay1);
+  font-size: 34px;
+}
+
+.site:focus-visible,
+.tile .edit:focus-visible {
   outline: 2px solid var(--mauve);
   outline-offset: 2px;
 }
@@ -210,11 +255,120 @@ body { display: flex; justify-content: center; }
   white-space: nowrap;
 }
 
+/* Add and edit panel, drawn like a tmux popup */
+.panel {
+  width: min(480px, 100% - 32px);
+  padding: 0;
+  border: 1px solid var(--surface0);
+  border-radius: 14px;
+  background: var(--mantle);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+}
+
+.panel::backdrop { background: rgba(17, 17, 27, 0.7); }
+
+.panel form { padding: 20px 22px; }
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  color: var(--sapphire);
+  font-size: 15px;
+}
+
+.panel-title .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--crust);
+}
+
+.panel-title .icon img { width: 20px; height: 20px; }
+.panel-title .icon .letter { font-size: 16px; }
+
+.row {
+  display: grid;
+  grid-template-columns: 5ch 1fr;
+  align-items: center;
+  gap: 1ch;
+  margin-bottom: 10px;
+  color: var(--overlay1);
+}
+
+.row input {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--crust);
+  color: var(--text);
+  font: inherit;
+  caret-color: var(--rosewater);
+}
+
+.row input:focus { border-color: var(--mauve); }
+.row input::placeholder { color: var(--surface2); }
+
+.panel-error {
+  min-height: 22px;
+  margin: 4px 0 10px;
+  color: var(--red);
+  overflow-wrap: anywhere;
+}
+
+/* Errors come from the same checks as the commands, which write them lowercase */
+.panel-error::first-letter { text-transform: uppercase; }
+
+.panel-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.panel-actions .spacer { flex: 1; }
+
+.panel-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  background: var(--surface0);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel-actions button:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: 2px;
+}
+
+.panel-actions .primary {
+  border-color: var(--sapphire);
+  background: var(--sapphire);
+  color: var(--crust);
+}
+
+.panel-actions .danger {
+  border-color: var(--red);
+  background: none;
+  color: var(--red);
+}
+
+.panel-actions .danger.confirming {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--crust);
+}
+
 @media (max-width: 560px) {
   .now .date { display: none; }
   .shell { margin-top: 14vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site, .output.fading { transition: none; }
+  .site, .tile .edit, .output.fading { transition: none; }
 }

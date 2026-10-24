@@ -1,4 +1,4 @@
-import { migrate } from "./sites.js";
+import { addSite, migrate, updateSite } from "./sites.js";
 import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
 import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
@@ -60,7 +60,7 @@ let currentSites = [];
 
 function renderSites(sites) {
   currentSites = sites;
-  sitesEl.replaceChildren(...sites.map(siteTile));
+  sitesEl.replaceChildren(...sites.map(siteTile), addTile());
   updateGhost();
 }
 
@@ -69,6 +69,45 @@ function siteTile(site, i) {
   a.className = "site";
   a.href = site.url;
 
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = site.name;
+  a.append(siteIcon(site, i), name);
+
+  // A sibling of the link, not inside it: a button can't be nested in a link
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "edit";
+  edit.textContent = "\uf040";
+  edit.title = `Edit ${site.name}`;
+  edit.setAttribute("aria-label", `Edit ${site.name}`);
+  edit.addEventListener("click", () => openEditor(site));
+
+  const tile = document.createElement("div");
+  tile.className = "tile";
+  tile.append(a, edit);
+  return tile;
+}
+
+function addTile() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "site add-tile";
+
+  const icon = document.createElement("span");
+  icon.className = "icon";
+  icon.textContent = "+";
+
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = "Add";
+
+  button.append(icon, name);
+  button.addEventListener("click", () => openEditor(null));
+  return button;
+}
+
+function siteIcon(site, i) {
   const icon = document.createElement("span");
   icon.className = "icon";
 
@@ -87,13 +126,7 @@ function siteTile(site, i) {
   } else {
     icon.append(letterFor(site.name, i));
   }
-
-  const name = document.createElement("span");
-  name.className = "name";
-  name.textContent = site.name;
-
-  a.append(icon, name);
-  return a;
+  return icon;
 }
 
 function letterFor(name, i) {
@@ -176,7 +209,11 @@ async function runPromptCommand(text, command) {
       q.value = "";
       updateGhost();
       if (result.action === "export") awaitExport();
-      else awaitImportFile(result.mode);
+      else if (result.action === "import") awaitImportFile(result.mode);
+      else {
+        clearOutput();
+        openEditor(data.sites.find((s) => s.id === result.id));
+      }
       return;
     }
     if (result.error) {
@@ -292,6 +329,94 @@ function pickFile() {
   });
 }
 
+const editor = document.getElementById("editor");
+const editorForm = document.getElementById("editor-form");
+const editorTitle = document.getElementById("editor-title");
+const editorUrl = document.getElementById("editor-url");
+const editorName = document.getElementById("editor-name");
+const editorError = document.getElementById("editor-error");
+const editorDelete = document.getElementById("editor-delete");
+let editing = null;
+let returnFocus = null;
+
+/** Opens the panel to edit `site`, or to add a new site when `site` is null. */
+function openEditor(site) {
+  editing = site;
+  returnFocus = document.activeElement;
+  const index = site ? currentSites.findIndex((s) => s.id === site.id) : -1;
+  editorTitle.replaceChildren(...(site ? [siteIcon(site, Math.max(index, 0)), `Edit ${site.name}`] : ["Add a site"]));
+  editorUrl.value = site?.url ?? "";
+  editorName.value = site?.name ?? "";
+  editorError.textContent = "";
+  editorDelete.hidden = !site;
+  resetDelete();
+  editor.showModal();
+  (site ? editorName : editorUrl).focus();
+}
+
+function resetDelete() {
+  editorDelete.classList.remove("confirming");
+  editorDelete.textContent = "Delete";
+}
+
+async function saveSites(data, sites) {
+  await write(SITES_KEY, { ...data, sites });
+  renderSites(sites);
+}
+
+editorForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const data = await loadData();
+    const fields = { url: editorUrl.value, name: editorName.value };
+    const result = editing ? updateSite(data.sites, editing.id, fields) : addSite(data.sites, fields);
+    if (result.error) {
+      editorError.textContent = result.error;
+      return;
+    }
+    const message = editing ? `saved ${result.site.name}` : `added ${result.site.name} → ${result.site.url}`;
+    await saveSites(data, result.sites);
+    editor.close();
+    showOutput(message, "ok");
+  } catch (err) {
+    editorError.textContent = err.message;
+  }
+});
+
+editorDelete.addEventListener("click", async () => {
+  if (!editorDelete.classList.contains("confirming")) {
+    editorDelete.classList.add("confirming");
+    editorDelete.textContent = "Really delete?";
+    return;
+  }
+  try {
+    const data = await loadData();
+    const name = editing.name;
+    await saveSites(data, data.sites.filter((s) => s.id !== editing.id));
+    editor.close();
+    showOutput(`removed ${name}`, "ok");
+  } catch (err) {
+    editorError.textContent = err.message;
+  }
+});
+
+editorDelete.addEventListener("blur", resetDelete);
+document.getElementById("editor-cancel").addEventListener("click", () => editor.close());
+for (const field of [editorUrl, editorName]) {
+  field.addEventListener("input", () => (editorError.textContent = ""));
+}
+
+// The form fills the dialog, so a click landing on the dialog itself is on the backdrop
+editor.addEventListener("click", (e) => {
+  if (e.target === editor) editor.close();
+});
+
+editor.addEventListener("close", () => {
+  editing = null;
+  // Tiles are rebuilt on save, so the button that opened the panel may be gone
+  (returnFocus?.isConnected ? returnFocus : q).focus();
+});
+
 const ghostTyped = document.getElementById("ghost-typed");
 const ghostRest = document.getElementById("ghost-rest");
 
@@ -354,6 +479,7 @@ const COMMON_TLDS = new Set(["com", "org", "net", "io", "dev", "app", "ai", "co"
 
 // "/" jumps to the search bar, Esc clears it
 document.addEventListener("keydown", (e) => {
+  if (editor.open) return;
   if (e.key === "/" && document.activeElement !== q) {
     e.preventDefault();
     q.focus();

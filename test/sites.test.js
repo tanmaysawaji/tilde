@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SCHEMA_VERSION, addSite, defaultName, migrate, normalizeUrl, removeSite } from "../sites.js";
+import { SCHEMA_VERSION, addSite, defaultName, findSiteByName, migrate, normalizeUrl, removeSite, updateSite } from "../sites.js";
 
 const ids = () => {
   let n = 0;
@@ -98,4 +98,43 @@ test("migrate leaves current data alone, even if it's empty", () => {
 test("migrate refuses data it can't read", () => {
   assert.throws(() => migrate({ version: SCHEMA_VERSION + 1, sites: [] }), /newer version/);
   assert.throws(() => migrate({ sites: "?" }), /doesn't recognize/);
+});
+
+test("addSite needs a URL", () => {
+  assert.equal(addSite([], { url: "  " }).error, "a URL is required");
+  assert.equal(addSite([], {}).error, "a URL is required");
+});
+
+const twoSites = () => {
+  let sites = addSite([], { url: "github.com" }, () => "gh").sites;
+  sites = addSite(sites, { url: "mail.google.com", name: "Gmail" }, () => "gm").sites;
+  return sites;
+};
+
+test("updateSite changes the name and URL in place", () => {
+  const result = updateSite(twoSites(), "gh", { url: "gitlab.com", name: " Code " });
+  assert.deepEqual(result.site, { id: "gh", name: "Code", url: "https://gitlab.com/", icon: null });
+  assert.deepEqual(result.sites.map((s) => s.id), ["gh", "gm"]);
+});
+
+test("updateSite allows keeping its own URL and name", () => {
+  const result = updateSite(twoSites(), "gh", { url: "https://github.com/", name: "github" });
+  assert.equal(result.site.name, "github");
+});
+
+test("updateSite falls back to the default name", () => {
+  assert.equal(updateSite(twoSites(), "gh", { url: "gitlab.com", name: "" }).site.name, "Gitlab");
+});
+
+test("updateSite refuses clashes with other sites and missing sites", () => {
+  const sites = twoSites();
+  assert.match(updateSite(sites, "gh", { url: "mail.google.com", name: "x" }).error, /already saved as Gmail/);
+  assert.match(updateSite(sites, "gh", { url: "github.com", name: "GMAIL" }).error, /named GMAIL already exists/);
+  assert.match(updateSite(sites, "gh", { url: "nope", name: "x" }).error, /not a web address/);
+  assert.equal(updateSite(sites, "zz", { url: "x.com" }).error, "that site no longer exists");
+});
+
+test("findSiteByName ignores case and surrounding spaces", () => {
+  assert.equal(findSiteByName(twoSites(), " gmail ").id, "gm");
+  assert.equal(findSiteByName(twoSites(), "nope"), undefined);
 });

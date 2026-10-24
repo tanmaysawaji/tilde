@@ -1,4 +1,4 @@
-import { addSite, removeSite } from "./sites.js";
+import { addSite, findSiteByName, removeSite } from "./sites.js";
 
 /**
  * Splits prompt text into a command. Returns null unless the text starts with `/`;
@@ -34,6 +34,18 @@ const COMMANDS = {
       const result = removeSite(sites, args);
       if (result.error) return result;
       return { sites: result.sites, message: `removed ${result.site.name}` };
+    },
+  },
+
+  edit: {
+    usage: "/edit <name>",
+    summary: "edit a site's name or URL",
+    takesSiteName: true,
+    run(sites, args) {
+      if (!args) return { error: `usage: ${this.usage}` };
+      const site = findSiteByName(sites, args);
+      if (!site) return { error: `no site named ${args}` };
+      return { action: "edit", id: site.id };
     },
   },
 
@@ -88,7 +100,8 @@ function findCommand(name) {
  * Runs a parsed command against the saved sites. Returns one of:
  * `{ sites, message }` when the sites changed, `{ info }` for output that changes
  * nothing (like /help), `{ action }` for work the page has to do itself (`"export"`,
- * or `"import"` with a `mode` of `"merge"` or `"replace"`), or `{ error }`.
+ * `"import"` with a `mode` of `"merge"` or `"replace"`, or `"edit"` with the site's
+ * `id`), or `{ error }`.
  */
 export function runCommand(sites, { name, args }) {
   const command = findCommand(name);
