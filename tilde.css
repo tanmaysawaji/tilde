@@ -130,6 +130,27 @@ body { display: flex; justify-content: center; }
 .output[data-kind="error"] { color: var(--red); }
 .output[data-kind="info"] { color: var(--subtext0); }
 
+.output .action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sapphire);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.output .action:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: 2px;
+}
+
+.drop-ready .shell {
+  outline: 2px dashed var(--mauve);
+  outline-offset: 20px;
+  border-radius: 14px;
+}
+
 .output.fading {
   opacity: 0;
   transition: opacity 0.4s;

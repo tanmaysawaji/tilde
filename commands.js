@@ -37,6 +37,28 @@ const COMMANDS = {
     },
   },
 
+  export: {
+    usage: "/export",
+    summary: "download your sites as a backup file",
+    run(sites, args) {
+      if (args) return { error: `usage: ${this.usage}` };
+      return { action: "export" };
+    },
+  },
+
+  import: {
+    usage: "/import [--merge|--replace]",
+    summary: "load sites from a backup file (merges by default)",
+    run(sites, args) {
+      const parsed = parseOptions(args, ["merge", "replace"], this.usage);
+      if (parsed.error) return parsed;
+      if (parsed.options.has("merge") && parsed.options.has("replace")) {
+        return { error: "use --merge or --replace, not both" };
+      }
+      return { action: "import", mode: parsed.options.has("replace") ? "replace" : "merge" };
+    },
+  },
+
   help: {
     usage: "/help",
     summary: "list the commands",
@@ -48,6 +70,16 @@ const COMMANDS = {
   },
 };
 
+function parseOptions(args, allowed, usage) {
+  const options = new Set();
+  for (const word of args.split(/\s+/).filter(Boolean)) {
+    if (!word.startsWith("--")) return { error: `usage: ${usage}` };
+    if (!allowed.includes(word.slice(2))) return { error: `unknown option: ${word}` };
+    options.add(word.slice(2));
+  }
+  return { options };
+}
+
 function findCommand(name) {
   return Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : null;
 }
@@ -55,7 +87,8 @@ function findCommand(name) {
 /**
  * Runs a parsed command against the saved sites. Returns one of:
  * `{ sites, message }` when the sites changed, `{ info }` for output that changes
- * nothing (like /help), or `{ error }`.
+ * nothing (like /help), `{ action }` for work the page has to do itself (`"export"`,
+ * or `"import"` with a `mode` of `"merge"` or `"replace"`), or `{ error }`.
  */
 export function runCommand(sites, { name, args }) {
   const command = findCommand(name);

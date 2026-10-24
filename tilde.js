@@ -1,6 +1,7 @@
 import { migrate } from "./sites.js";
 import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
+import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
 
 const LETTER_COLORS = ["#74c7ec", "#cba6f7", "#fab387", "#a6e3a1", "#f5c2e7", "#89b4fa", "#f9e2af", "#94e2d5"];
 const hasExtensionApi = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL;
@@ -135,6 +136,8 @@ function clearOutput() {
   fadeTimers = [];
   output.textContent = "";
   output.classList.remove("fading");
+  pending = null;
+  clearDropReady();
 }
 
 // Search: URLs open directly, everything else goes to your default search engine
@@ -169,6 +172,13 @@ async function runPromptCommand(text, command) {
     // Read fresh rather than reuse what's rendered, in case another tab changed the sites
     const data = await loadData();
     const result = runCommand(data.sites, command);
+    if (result.action) {
+      q.value = "";
+      updateGhost();
+      if (result.action === "export") awaitExport();
+      else awaitImportFile(result.mode);
+      return;
+    }
     if (result.error) {
       showOutput(result.error, "error");
       return;
@@ -184,6 +194,102 @@ async function runPromptCommand(text, command) {
   } catch (err) {
     showOutput(err.message, "error");
   }
+}
+
+function download(fileName, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// Opening a file dialog straight from Enter leaves the pointer hidden in it (Windows
+// hides it while typing), so /import and /export wait for a click instead.
+let pending = null;
+
+function awaitClick(text, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  showOutput(text, "info");
+  output.append(button, " (Esc to cancel)");
+}
+
+function awaitExport() {
+  awaitClick(`${backupFileName()} is ready: `, "save…", exportSites);
+  pending = { action: "export" };
+}
+
+async function exportSites() {
+  try {
+    const backup = createBackup(await loadData());
+    download(backup.fileName, backup.json);
+    showOutput(backup.message, "ok");
+  } catch (err) {
+    showOutput(err.message, "error");
+  }
+}
+
+function awaitImportFile(mode) {
+  awaitClick("drop a backup file on the page, or ", "browse…", async () => {
+    const file = await pickFile();
+    if (file) importFile(file, mode);
+  });
+  pending = { action: "import", mode };
+}
+
+async function importFile(file, mode) {
+  try {
+    const backup = readBackup(await file.text());
+    const data = await loadData();
+    const result = backup.error ? backup : importSites(data.sites, backup.sites, mode);
+    if (result.error) {
+      showOutput(result.error, "error");
+      return;
+    }
+    await write(SITES_KEY, { ...data, sites: result.sites });
+    renderSites(result.sites);
+    showOutput(result.message, "ok");
+  } catch (err) {
+    showOutput(err.message, "error");
+  }
+}
+
+document.addEventListener("dragover", (e) => {
+  if (pending?.action !== "import" || !e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  document.documentElement.classList.add("drop-ready");
+});
+
+document.addEventListener("dragleave", (e) => {
+  if (!e.relatedTarget) clearDropReady();
+});
+
+document.addEventListener("drop", (e) => {
+  if (pending?.action !== "import") return;
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) importFile(file, pending.mode);
+  else clearDropReady();
+});
+
+function clearDropReady() {
+  document.documentElement.classList.remove("drop-ready");
+}
+
+function pickFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.addEventListener("change", () => resolve(input.files[0] ?? null));
+    input.addEventListener("cancel", () => resolve(null));
+    input.click();
+  });
 }
 
 const ghostTyped = document.getElementById("ghost-typed");
@@ -256,5 +362,8 @@ document.addEventListener("keydown", (e) => {
     historyState = null;
     clearOutput();
     updateGhost();
+  } else if (e.key === "Escape" && pending) {
+    clearOutput();
+    q.focus();
   }
 });

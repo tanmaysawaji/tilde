@@ -41,9 +41,11 @@ test("unknown commands are reported, including inherited object keys", () => {
 test("/help lists every command in aligned columns", () => {
   const { info } = runCommand([], parseCommand("/help"));
   assert.equal(info, [
-    "/add <url> [name]  save a site, optionally as [name]",
-    "/rm <name>         remove a site",
-    "/help              list the commands",
+    "/add <url> [name]            save a site, optionally as [name]",
+    "/rm <name>                   remove a site",
+    "/export                      download your sites as a backup file",
+    "/import [--merge|--replace]  load sites from a backup file (merges by default)",
+    "/help                        list the commands",
   ].join("\n"));
 });
 
@@ -58,6 +60,8 @@ test("complete finishes command names, adding a space when args follow", () => {
   assert.equal(complete("/a", sites), "/add ");
   assert.equal(complete("/R", sites), "/rm ");
   assert.equal(complete("/he", sites), "/help");
+  assert.equal(complete("/e", sites), "/export");
+  assert.equal(complete("/i", sites), "/import ");
   assert.equal(complete("/add", sites), null);
   assert.equal(complete("/x", sites), null);
 });
@@ -77,4 +81,21 @@ test("complete suggests nothing it shouldn't", () => {
   assert.equal(complete("/rm z", sites), null);
   assert.equal(complete("/add g", sites), null);
   assert.equal(complete("/constructor x", sites), null);
+});
+
+test("/export asks the page to download a backup", () => {
+  assert.deepEqual(runCommand([], parseCommand("/export")), { action: "export" });
+  assert.equal(runCommand([], parseCommand("/export now")).error, "usage: /export");
+});
+
+test("/import merges by default and takes --merge or --replace", () => {
+  assert.deepEqual(runCommand([], parseCommand("/import")), { action: "import", mode: "merge" });
+  assert.deepEqual(runCommand([], parseCommand("/import --merge")), { action: "import", mode: "merge" });
+  assert.deepEqual(runCommand([], parseCommand("/import  --replace ")), { action: "import", mode: "replace" });
+});
+
+test("/import refuses bad options", () => {
+  assert.equal(runCommand([], parseCommand("/import --force")).error, "unknown option: --force");
+  assert.equal(runCommand([], parseCommand("/import replace")).error, "usage: /import [--merge|--replace]");
+  assert.equal(runCommand([], parseCommand("/import --merge --replace")).error, "use --merge or --replace, not both");
 });
