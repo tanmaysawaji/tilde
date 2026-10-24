@@ -17,9 +17,12 @@
       </div>
       <div class="line">
         <span class="char" aria-hidden="true">❯</span>
-        <input id="q" type="text" spellcheck="false" autofocus
-               placeholder="Search or type a URL"
-               aria-label="Search the web or enter an address">
+        <span class="field">
+          <input id="q" type="text" spellcheck="false" autofocus
+                 placeholder="Search or type a URL"
+                 aria-label="Search the web or enter an address">
+          <span class="ghost" aria-hidden="true"><span class="typed" id="ghost-typed"></span><span id="ghost-rest"></span></span>
+        </span>
         <span class="corner" aria-hidden="true">─╯</span>
       </div>
     </form>

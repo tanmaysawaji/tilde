@@ -84,8 +84,26 @@ body { display: flex; justify-content: center; }
   margin-right: 1ch;
 }
 
-#q {
+/* The input and its autocomplete ghost text share one grid cell, so they line up */
+.field {
   flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.field > * { grid-area: 1 / 1; }
+
+.ghost {
+  overflow: hidden;
+  white-space: pre;
+  color: var(--surface2);
+  pointer-events: none;
+}
+
+.ghost .typed { visibility: hidden; }
+
+#q {
+  width: 100%;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -110,6 +128,7 @@ body { display: flex; justify-content: center; }
 
 .output[data-kind="ok"] { color: var(--green); }
 .output[data-kind="error"] { color: var(--red); }
+.output[data-kind="info"] { color: var(--subtext0); }
 
 .output.fading {
   opacity: 0;

@@ -1,5 +1,6 @@
 import { migrate } from "./sites.js";
-import { parseCommand, runCommand } from "./commands.js";
+import { complete, parseCommand, runCommand } from "./commands.js";
+import { addToHistory, browseHistory } from "./history.js";
 
 const LETTER_COLORS = ["#74c7ec", "#cba6f7", "#fab387", "#a6e3a1", "#f5c2e7", "#89b4fa", "#f9e2af", "#94e2d5"];
 const hasExtensionApi = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL;
@@ -19,27 +20,47 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
-const STORAGE_KEY = "tilde";
+const SITES_KEY = "tilde";
+const HISTORY_KEY = "history";
 const storage = hasExtensionApi && chrome.storage ? chrome.storage.local : null;
 // Outside the extension there's no chrome.storage, so changes last until the tab closes
-let unsavedData = null;
+const unsaved = {};
+
+async function read(key) {
+  return storage ? (await storage.get(key))[key] : unsaved[key];
+}
+
+async function write(key, value) {
+  if (storage) await storage.set({ [key]: value });
+  else unsaved[key] = value;
+}
 
 async function loadData() {
-  const stored = storage ? (await storage.get(STORAGE_KEY))[STORAGE_KEY] : unsavedData;
-  const { data, changed } = migrate(stored, typeof LINKS !== "undefined" ? LINKS : []);
-  if (changed) await saveData(data);
+  const { data, changed } = migrate(await read(SITES_KEY), typeof LINKS !== "undefined" ? LINKS : []);
+  if (changed) await write(SITES_KEY, data);
   return data;
 }
 
-async function saveData(data) {
-  if (storage) await storage.set({ [STORAGE_KEY]: data });
-  else unsavedData = data;
+let commandHistory = [];
+let historyState = null;
+
+async function loadHistory() {
+  const stored = await read(HISTORY_KEY);
+  return Array.isArray(stored) ? stored : [];
+}
+
+async function recordCommand(text) {
+  commandHistory = addToHistory(await loadHistory(), text);
+  await write(HISTORY_KEY, commandHistory);
 }
 
 const sitesEl = document.getElementById("sites");
+let currentSites = [];
 
 function renderSites(sites) {
+  currentSites = sites;
   sitesEl.replaceChildren(...sites.map(siteTile));
+  updateGhost();
 }
 
 function siteTile(site, i) {
@@ -83,11 +104,13 @@ function letterFor(name, i) {
 }
 
 loadData().then((data) => renderSites(data.sites), (err) => showOutput(err.message, "error"));
+loadHistory().then((stored) => (commandHistory = stored));
 
-// Keeps other open tabs in step when one of them changes the sites
+// Keeps other open tabs in step when one of them changes the sites or history
 storage?.onChanged.addListener((changes) => {
-  const data = changes[STORAGE_KEY]?.newValue;
+  const data = changes[SITES_KEY]?.newValue;
   if (data) renderSites(data.sites);
+  if (changes[HISTORY_KEY]) commandHistory = changes[HISTORY_KEY].newValue ?? [];
 });
 
 const output = document.getElementById("output");
@@ -125,7 +148,7 @@ form.addEventListener("submit", (e) => {
 
   const command = parseCommand(text);
   if (command) {
-    runPromptCommand(command);
+    runPromptCommand(text, command);
     return;
   }
 
@@ -139,8 +162,10 @@ form.addEventListener("submit", (e) => {
   }
 });
 
-async function runPromptCommand(command) {
+async function runPromptCommand(text, command) {
+  historyState = null;
   try {
+    await recordCommand(text);
     // Read fresh rather than reuse what's rendered, in case another tab changed the sites
     const data = await loadData();
     const result = runCommand(data.sites, command);
@@ -148,16 +173,64 @@ async function runPromptCommand(command) {
       showOutput(result.error, "error");
       return;
     }
-    await saveData({ ...data, sites: result.sites });
-    renderSites(result.sites);
+    if (result.sites) {
+      await write(SITES_KEY, { ...data, sites: result.sites });
+      renderSites(result.sites);
+    }
     q.value = "";
-    showOutput(result.message, "ok");
+    updateGhost();
+    if (result.info) showOutput(result.info, "info");
+    else showOutput(result.message, "ok");
   } catch (err) {
     showOutput(err.message, "error");
   }
 }
 
-q.addEventListener("input", clearOutput);
+const ghostTyped = document.getElementById("ghost-typed");
+const ghostRest = document.getElementById("ghost-rest");
+
+function suggestion() {
+  const caretAtEnd = q.selectionStart === q.value.length && q.selectionEnd === q.value.length;
+  if (document.activeElement !== q || !caretAtEnd) return null;
+  return complete(q.value, currentSites);
+}
+
+function updateGhost() {
+  const completion = suggestion();
+  // The overlay can't follow the input when it scrolls, so it only shows while the text fits
+  const fits = q.scrollWidth <= q.clientWidth;
+  ghostTyped.textContent = q.value;
+  ghostRest.textContent = completion && fits ? completion.slice(q.value.length) : "";
+}
+
+// Help is reference for the command being typed, so typing leaves it up
+function promptEdited() {
+  if (output.dataset.kind !== "info") clearOutput();
+  updateGhost();
+}
+
+function replacePrompt(text) {
+  q.value = text;
+  promptEdited();
+}
+
+q.addEventListener("input", promptEdited);
+for (const type of ["keyup", "click", "focus", "blur"]) q.addEventListener(type, updateGhost);
+
+q.addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && !e.shiftKey) {
+    const completion = suggestion();
+    if (!completion) return;
+    e.preventDefault();
+    replacePrompt(completion);
+  } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    e.preventDefault();
+    const step = browseHistory(commandHistory, historyState, e.key === "ArrowUp" ? -1 : 1, q.value);
+    if (!step) return;
+    historyState = step.state;
+    replacePrompt(step.text);
+  }
+});
 
 function toUrl(text) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return text;
@@ -180,6 +253,8 @@ document.addEventListener("keydown", (e) => {
     q.focus();
   } else if (e.key === "Escape" && document.activeElement === q) {
     q.value = "";
+    historyState = null;
     clearOutput();
+    updateGhost();
   }
 });
