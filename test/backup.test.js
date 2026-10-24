@@ -13,7 +13,7 @@ const gmail = { id: "b", name: "Gmail", url: "https://mail.google.com/", icon: "
 
 test("createBackup names the file by local date and reports the count", () => {
   const now = new Date(2026, 9, 4, 12, 0);
-  const backup = createBackup({ version: SCHEMA_VERSION, sites: [github] }, now);
+  const backup = createBackup({ version: SCHEMA_VERSION, sites: [github] }, { perPage: 12 }, now);
   assert.equal(backup.fileName, "tilde-2026-10-04.json");
   assert.equal(backup.message, "exported 1 site to tilde-2026-10-04.json");
   assert.deepEqual(JSON.parse(backup.json), {
@@ -21,6 +21,7 @@ test("createBackup names the file by local date and reports the count", () => {
     exportedAt: now.toISOString(),
     version: SCHEMA_VERSION,
     sites: [github],
+    settings: { perPage: 12 },
   });
 });
 
@@ -29,8 +30,8 @@ test("backupFileName pads the local date", () => {
 });
 
 test("readBackup reads back what createBackup wrote", () => {
-  const { json } = createBackup({ version: SCHEMA_VERSION, sites: [github, gmail] });
-  assert.deepEqual(readBackup(json), { sites: [github, gmail] });
+  const { json } = createBackup({ version: SCHEMA_VERSION, sites: [github, gmail] }, { perPage: 8 });
+  assert.deepEqual(readBackup(json), { sites: [github, gmail], settings: { perPage: 8 } });
 });
 
 test("readBackup refuses files that aren't tilde backups it can read", () => {
@@ -77,4 +78,11 @@ test("importSites carries icons and where they came from", () => {
 test("readBackup upgrades a version 1 backup", () => {
   const v1 = JSON.stringify({ app: "tilde", version: 1, sites: [{ id: "a", name: "A", url: "https://a.com/", icon: "icons/a.png" }] });
   assert.equal(readBackup(v1).sites[0].iconSource, "custom");
+});
+
+test("readBackup has no settings for backups made before settings existed", () => {
+  const old = JSON.stringify({ app: "tilde", version: SCHEMA_VERSION, sites: [] });
+  assert.equal(readBackup(old).settings, null);
+  const odd = JSON.stringify({ app: "tilde", version: SCHEMA_VERSION, sites: [], settings: { perPage: -1 } });
+  assert.deepEqual(readBackup(odd).settings, { perPage: "auto" });
 });

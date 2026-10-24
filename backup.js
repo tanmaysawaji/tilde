@@ -1,4 +1,5 @@
 import { addSite, migrate } from "./sites.js";
+import { DEFAULT_SETTINGS, readSettings } from "./settings.js";
 
 /** The export file's name for a given moment, by local date: `tilde-2026-10-24.json`. */
 export function backupFileName(now = new Date()) {
@@ -9,12 +10,12 @@ export function backupFileName(now = new Date()) {
 }
 
 /**
- * Builds the export file for the stored data (`{ version, sites }`).
+ * Builds the export file for the stored data (`{ version, sites }`) and settings.
  * Returns `{ fileName, json, message }`; the file name comes from `backupFileName`.
  */
-export function createBackup(data, now = new Date()) {
+export function createBackup(data, settings = DEFAULT_SETTINGS, now = new Date()) {
   const fileName = backupFileName(now);
-  const backup = { app: "tilde", exportedAt: now.toISOString(), version: data.version, sites: data.sites };
+  const backup = { app: "tilde", exportedAt: now.toISOString(), version: data.version, sites: data.sites, settings };
   return {
     fileName,
     json: JSON.stringify(backup, null, 2) + "\n",
@@ -23,8 +24,9 @@ export function createBackup(data, now = new Date()) {
 }
 
 /**
- * Reads an export file's text, upgrading it to the current schema.
- * Returns `{ sites }`, or `{ error }` if it isn't a tilde backup tilde can read.
+ * Reads an export file's text, upgrading it to the current schema. Returns
+ * `{ sites, settings }`, with `settings` null for backups made before there were any,
+ * or `{ error }` if it isn't a tilde backup tilde can read.
  */
 export function readBackup(text) {
   let backup;
@@ -35,7 +37,8 @@ export function readBackup(text) {
   }
   if (backup?.app !== "tilde") return { error: "not a tilde backup" };
   try {
-    return { sites: migrate({ version: backup.version, sites: backup.sites }).data.sites };
+    const { sites } = migrate({ version: backup.version, sites: backup.sites }).data;
+    return { sites, settings: backup.settings == null ? null : readSettings(backup.settings) };
   } catch (err) {
     return { error: err.message };
   }

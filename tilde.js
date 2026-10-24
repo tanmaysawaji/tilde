@@ -3,6 +3,8 @@ import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
 import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
 import { applyIcon, duckduckgoIconUrl, sitesNeedingIcons } from "./icons.js";
+import { balancedShape, endOfPage, fitGrid, flipDirection, pageCount, pageOf, tilesPerPage } from "./pages.js";
+import { DEFAULT_SETTINGS, readSettings } from "./settings.js";
 
 const LETTER_COLORS = ["#74c7ec", "#cba6f7", "#fab387", "#a6e3a1", "#f5c2e7", "#89b4fa", "#f9e2af", "#94e2d5"];
 const hasExtensionApi = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL;
@@ -24,6 +26,7 @@ setInterval(tick, 1000);
 
 const SITES_KEY = "tilde";
 const HISTORY_KEY = "history";
+const SETTINGS_KEY = "settings";
 const storage = hasExtensionApi && chrome.storage ? chrome.storage.local : null;
 // Outside the extension there's no chrome.storage, so changes last until the tab closes
 const unsaved = {};
@@ -73,13 +76,113 @@ async function recordCommand(text) {
 }
 
 const sitesEl = document.getElementById("sites");
+const pagerEl = document.getElementById("pager");
 let currentSites = [];
+let settings = DEFAULT_SETTINGS;
+
+const MIN_TILE_WIDTH = 112; // matches the .sites column minimum in tilde.css
+const GAP = 10; // matches the .sites gap in tilde.css
+const BOTTOM_SPACE = 16;
+let tileHeight = 140;
+let currentPage = 0;
+let layout = { cols: 1, fit: 1, perPage: 1, tileWidth: MIN_TILE_WIDTH };
 
 function renderSites(sites) {
   currentSites = sites;
-  sitesEl.replaceChildren(...sites.map(siteTile), addTile());
+  renderPage();
   updateGhost();
 }
+
+function computeLayout() {
+  const width = sitesEl.clientWidth;
+  const style = (el) => getComputedStyle(el);
+  // From the output line's minimum height, so a long /help doesn't reshuffle the pages
+  const top = output.getBoundingClientRect().top + parseFloat(style(output).minHeight) + parseFloat(style(sitesEl).marginTop);
+  // The page list's space counts even while it's hidden, so it appearing never reshuffles either
+  const pagerSpace = parseFloat(style(document.documentElement).getPropertyValue("--pager-space"));
+  const height = window.innerHeight - top - pagerSpace - BOTTOM_SPACE;
+  const { cols, rows } = fitGrid({ width, height, minTileWidth: MIN_TILE_WIDTH, tileHeight, gap: GAP });
+  const fit = cols * rows;
+  layout = { cols, fit, perPage: tilesPerPage(settings.perPage, fit), tileWidth: (width - GAP * (cols - 1)) / cols };
+}
+
+// The + tile takes a slot after the sites, so it's on the last page
+function pagesTotal() {
+  return pageCount(currentSites.length + 1, layout.perPage);
+}
+
+function renderPage() {
+  computeLayout();
+  const total = currentSites.length + 1;
+  currentPage = Math.min(currentPage, pagesTotal() - 1);
+  const start = currentPage * layout.perPage;
+  const end = Math.min(start + layout.perPage, total);
+  const tiles = [];
+  for (let i = start; i < end; i++) tiles.push(i < currentSites.length ? siteTile(currentSites[i], i) : addTile());
+
+  const { cols } = balancedShape(tiles.length, layout.cols);
+  sitesEl.style.gridTemplateColumns = `repeat(${cols}, ${layout.tileWidth}px)`;
+  // Every page is as tall as a full one, so the page list below stays put when the last page is shorter
+  const fullRows = balancedShape(layout.perPage, layout.cols).rows;
+  sitesEl.style.minHeight = pagesTotal() > 1 ? `${fullRows * tileHeight + (fullRows - 1) * GAP}px` : "";
+  // The dragged tile has to stay in the document or the drag breaks, even when its page is gone
+  if (dragSource && sitesEl.contains(dragSource)) dragHolder.append(dragSource);
+  sitesEl.replaceChildren(...tiles);
+  renderPager();
+  if (draggedId) updateFlipZones();
+
+  const measured = sitesEl.firstElementChild?.offsetHeight;
+  if (measured && measured !== tileHeight) {
+    tileHeight = measured;
+    renderPage();
+  }
+}
+
+function renderPager() {
+  const pages = pagesTotal();
+  pagerEl.hidden = pages < 2;
+  pagerEl.replaceChildren(...Array.from({ length: pages }, (_, page) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.page = page;
+    button.setAttribute("aria-label", `Page ${page + 1}`);
+    if (page === currentPage) {
+      button.setAttribute("aria-current", "page");
+      button.textContent = `[${page + 1}]`;
+    } else {
+      button.textContent = String(page + 1);
+    }
+    button.addEventListener("click", () => goToPage(page));
+    return button;
+  }));
+}
+
+function goToPage(page) {
+  if (page < 0 || page >= pagesTotal() || page === currentPage) return;
+  currentPage = page;
+  renderPage();
+}
+
+function showSite(id) {
+  const index = currentSites.findIndex((s) => s.id === id);
+  if (index !== -1) goToPage(pageOf(index, layout.perPage));
+}
+
+let resizeFrame = 0;
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(renderPage);
+});
+
+let wheelTimer = null;
+window.addEventListener("wheel", (e) => {
+  // A trackpad flick fires a stream of wheel events; only the first of a stream turns the page
+  const startsGesture = wheelTimer === null;
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => (wheelTimer = null), 200);
+  if (!startsGesture || editor.open || e.ctrlKey || e.deltaY === 0) return;
+  goToPage(currentPage + Math.sign(e.deltaY));
+}, { passive: true });
 
 function siteTile(site, i) {
   const a = document.createElement("a");
@@ -102,6 +205,7 @@ function siteTile(site, i) {
 
   const tile = document.createElement("div");
   tile.className = "tile";
+  if (site.id === draggedId) tile.classList.add("dragging");
   tile.dataset.id = site.id;
   tile.append(a, edit);
   return tile;
@@ -127,6 +231,19 @@ function addTile() {
 
 const DRAG_TYPE = "application/x-tilde-site";
 let dropTarget = null;
+// Brave's drag image for a link is a URL label that hides what's under the cursor, such as
+// the page numbers, so tiles drag with a blank one; the dimmed tile and outlines show the rest
+const BLANK_DRAG_IMAGE = new Image();
+BLANK_DRAG_IMAGE.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const FIRST_FLIP_MS = 600;
+const REPEAT_FLIP_MS = 1000;
+const FLIP_ZONE_MIN = 48;
+const dragHolder = document.getElementById("drag-holder");
+const flipZones = { [-1]: document.getElementById("flip-left"), 1: document.getElementById("flip-right") };
+let draggedId = null;
+let dragSource = null;
+let flipDir = 0;
+let flipTimer = null;
 
 function reorder(change) {
   return withSites(async (data) => {
@@ -145,7 +262,57 @@ sitesEl.addEventListener("dragstart", (e) => {
   const tile = e.target.closest(".tile");
   if (!tile) return;
   e.dataTransfer.setData(DRAG_TYPE, tile.dataset.id);
+  e.dataTransfer.setDragImage(BLANK_DRAG_IMAGE, 0, 0);
   tile.classList.add("dragging");
+  draggedId = tile.dataset.id;
+  dragSource = tile;
+  updateFlipZones();
+});
+
+function tileEdges() {
+  const rects = [...sitesEl.children].map((el) => el.getBoundingClientRect());
+  return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)) };
+}
+
+function canFlip(dir) {
+  const page = currentPage + dir;
+  return dir !== 0 && page >= 0 && page < pagesTotal();
+}
+
+function updateFlipZones() {
+  const { left, right } = tileEdges();
+  flipZones[-1].style.width = `${Math.max(left, FLIP_ZONE_MIN)}px`;
+  flipZones[1].style.width = `${window.innerWidth - Math.min(right, window.innerWidth - FLIP_ZONE_MIN)}px`;
+  for (const dir of [-1, 1]) {
+    flipZones[dir].classList.toggle("shown", Boolean(draggedId) && canFlip(dir));
+    flipZones[dir].classList.toggle("armed", dir === flipDir);
+  }
+}
+
+function setFlip(dir) {
+  const next = canFlip(dir) ? dir : 0;
+  if (next === flipDir) return;
+  flipDir = next;
+  clearTimeout(flipTimer);
+  if (flipDir) flipTimer = setTimeout(flip, FIRST_FLIP_MS);
+  updateFlipZones();
+}
+
+function flip() {
+  goToPage(currentPage + flipDir);
+  if (canFlip(flipDir)) flipTimer = setTimeout(flip, REPEAT_FLIP_MS);
+  else setFlip(0);
+}
+
+// The side zones are outside the grid, so they're watched from the whole document
+document.addEventListener("dragover", (e) => {
+  if (!draggedId) return;
+  const edges = { ...tileEdges(), windowWidth: window.innerWidth, minWidth: FLIP_ZONE_MIN };
+  setFlip(flipDirection(e.clientX, edges));
+});
+
+document.addEventListener("dragleave", (e) => {
+  if (draggedId && !e.relatedTarget) setFlip(0);
 });
 
 sitesEl.addEventListener("dragover", (e) => {
@@ -176,9 +343,37 @@ sitesEl.addEventListener("drop", (e) => {
   });
 });
 
-sitesEl.addEventListener("dragend", () => {
+pagerEl.addEventListener("dragover", (e) => {
+  const button = e.target.closest("button");
+  if (!button || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  setDropTarget(button);
+});
+
+pagerEl.addEventListener("dragleave", (e) => {
+  if (!pagerEl.contains(e.relatedTarget)) setDropTarget(null);
+});
+
+pagerEl.addEventListener("drop", (e) => {
+  const button = e.target.closest("button");
+  const id = e.dataTransfer.getData(DRAG_TYPE);
+  if (!button || !id) return;
+  e.preventDefault();
+  const page = Number(button.dataset.page);
+  reorder((sites) => moveSite(sites, id, endOfPage(page, layout.perPage, sites.length)));
+});
+
+// On the document, since the dragged tile may be parked outside the grid by then
+document.addEventListener("dragend", () => {
+  if (!draggedId) return;
+  draggedId = null;
+  dragSource = null;
+  dragHolder.replaceChildren();
+  setFlip(0);
   setDropTarget(null);
   sitesEl.querySelector(".dragging")?.classList.remove("dragging");
+  updateFlipZones();
 });
 
 sitesEl.addEventListener("keydown", async (e) => {
@@ -191,6 +386,7 @@ sitesEl.addEventListener("keydown", async (e) => {
   const delta = e.key === "ArrowLeft" ? -1 : 1;
   const focused = e.target.classList.contains("edit") ? ".edit" : ".site";
   await reorder((sites) => moveSite(sites, id, sites.findIndex((s) => s.id === id) + delta));
+  showSite(id);
   sitesEl.querySelector(`.tile[data-id="${CSS.escape(id)}"] ${focused}`)?.focus();
 });
 
@@ -319,6 +515,10 @@ loadData().then((data) => {
   renderSites(data.sites);
   lookUpIcons();
 }, (err) => showOutput(err.message, "error"));
+read(SETTINGS_KEY).then((stored) => {
+  settings = readSettings(stored);
+  renderPage();
+});
 loadHistory().then((stored) => (commandHistory = stored));
 
 // Keeps other open tabs in step when one of them changes the sites or history
@@ -326,6 +526,10 @@ storage?.onChanged.addListener((changes) => {
   const data = changes[SITES_KEY]?.newValue;
   if (data) renderSites(data.sites);
   if (changes[HISTORY_KEY]) commandHistory = changes[HISTORY_KEY].newValue ?? [];
+  if (changes[SETTINGS_KEY]) {
+    settings = readSettings(changes[SETTINGS_KEY].newValue);
+    renderPage();
+  }
 });
 
 const output = document.getElementById("output");
@@ -389,12 +593,21 @@ async function runPromptCommand(text, command) {
       if (result.sites) await saveSites(data, result.sites);
       return { result, sites: data.sites };
     });
+    if (result.action === "page" && result.page > pagesTotal()) {
+      const pages = pagesTotal();
+      showOutput(pages === 1 ? "there's only 1 page" : `there are only ${pages} pages`, "error");
+      return;
+    }
     if (result.action) {
       q.value = "";
       updateGhost();
       if (result.action === "export") awaitExport();
       else if (result.action === "import") awaitImportFile(result.mode);
       else if (result.action === "setting") await changeSetting(result);
+      else if (result.action === "page") {
+        goToPage(result.page - 1);
+        showOutput(`page ${result.page} of ${pagesTotal()}`, "ok");
+      }
       else {
         clearOutput();
         openEditor(sites.find((s) => s.id === result.id));
@@ -407,6 +620,7 @@ async function runPromptCommand(text, command) {
     }
     q.value = "";
     updateGhost();
+    if (result.site) showSite(result.site.id);
     if (result.info) showOutput(result.info, "info");
     else showOutput(result.message, "ok");
   } catch (err) {
@@ -444,7 +658,7 @@ function awaitExport() {
 
 async function exportSites() {
   try {
-    const backup = createBackup(await loadData());
+    const backup = createBackup(await loadData(), settings);
     download(backup.fileName, backup.json);
     showOutput(backup.message, "ok");
   } catch (err) {
@@ -472,10 +686,17 @@ async function importFile(file, mode) {
       showOutput(result.error, "error");
       return;
     }
+    if (mode === "replace" && backup.settings) await saveSettings(backup.settings);
     showOutput(result.message, "ok");
   } catch (err) {
     showOutput(err.message, "error");
   }
+}
+
+async function saveSettings(next) {
+  settings = next;
+  await write(SETTINGS_KEY, settings);
+  renderPage();
 }
 
 document.addEventListener("dragover", (e) => {
@@ -500,7 +721,20 @@ function clearDropReady() {
   document.documentElement.classList.remove("drop-ready");
 }
 
-async function changeSetting({ value }) {
+async function changeSetting({ key, value }) {
+  if (key === "perpage") await changePerPage(value);
+  else await changeIconLookup(value);
+}
+
+async function changePerPage(value) {
+  if (value !== undefined) await saveSettings({ ...settings, perPage: value });
+  const { perPage } = settings;
+  const shown = perPage === "auto" ? `auto (${layout.fit} fit)` : String(perPage);
+  const capped = perPage !== "auto" && perPage > layout.fit ? `, but only ${layout.fit} fit right now` : "";
+  showOutput(`tiles per page: ${shown}${capped}`, "ok");
+}
+
+async function changeIconLookup(value) {
   if (!hasPermissionsApi) {
     showOutput("settings only work inside the extension", "error");
     return;
@@ -634,6 +868,7 @@ editorForm.addEventListener("submit", async (e) => {
     }
     const message = editing ? `saved ${result.site.name}` : `added ${result.site.name} → ${result.site.url}`;
     editor.close();
+    showSite(result.site.id);
     showOutput(message, "ok");
   } catch (err) {
     editorError.textContent = err.message;
@@ -736,6 +971,13 @@ const COMMON_TLDS = new Set(["com", "org", "net", "io", "dev", "app", "ai", "co"
 // "/" jumps to the search bar, Esc clears it
 document.addEventListener("keydown", (e) => {
   if (editor.open) return;
+  const digit = /^Digit([1-9])$/.exec(e.code);
+  const inTextField = document.activeElement?.matches("input, textarea, [contenteditable]");
+  if (digit && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.altKey || !inTextField)) {
+    e.preventDefault();
+    goToPage(Number(digit[1]) - 1);
+    return;
+  }
   if (e.key === "/" && document.activeElement !== q) {
     e.preventDefault();
     q.focus();

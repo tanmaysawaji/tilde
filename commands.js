@@ -22,7 +22,7 @@ const COMMANDS = {
       const [url, ...nameWords] = args.split(/\s+/);
       const result = addSite(sites, { url, name: nameWords.join(" ") });
       if (result.error) return result;
-      return { sites: result.sites, message: `added ${result.site.name} → ${result.site.url}` };
+      return { sites: result.sites, site: result.site, message: `added ${result.site.name} → ${result.site.url}` };
     },
   },
 
@@ -52,7 +52,7 @@ const COMMANDS = {
       const site = findSiteByName(sites, name);
       if (!site) return { error: `no site named ${name}` };
       const moved = moveSite(sites, site.id, Number(positionText) - 1);
-      return { sites: moved, message: `moved ${site.name} to ${moved.indexOf(site) + 1}` };
+      return { sites: moved, site, message: `moved ${site.name} to ${moved.indexOf(site) + 1}` };
     },
   },
 
@@ -68,20 +68,32 @@ const COMMANDS = {
     },
   },
 
+  page: {
+    usage: "/page <n>",
+    summary: "switch to a page",
+    run(sites, args) {
+      if (!/^\d+$/.test(args) || Number(args) < 1) return { error: `usage: ${this.usage}` };
+      return { action: "page", page: Number(args) };
+    },
+  },
+
   set: {
-    usage: "/set icon-lookup [on|off]",
-    summary: "look up missing icons on DuckDuckGo (off by default)",
+    usage: "/set <setting> [value]",
+    summary: "change a setting: icon-lookup on|off, perpage <n>|auto",
     suggest(previous) {
-      if (previous.length === 0) return ["icon-lookup"];
-      return previous.length === 1 && previous[0] === "icon-lookup" ? ["on", "off"] : [];
+      if (previous.length === 0) return Object.keys(SETTINGS);
+      return previous.length === 1 ? SETTINGS[previous[0]]?.words ?? [] : [];
     },
     run(sites, args) {
       const [key, value, ...extra] = args.toLowerCase().split(/\s+/).filter(Boolean);
-      if (!key || extra.length) return { error: `usage: ${this.usage}` };
-      if (key !== "icon-lookup") return { error: `unknown setting: ${key}` };
+      if (!key) return { error: `usage: ${this.usage}` };
+      if (!Object.hasOwn(SETTINGS, key)) return { error: `unknown setting: ${key}` };
+      const setting = SETTINGS[key];
+      if (extra.length) return { error: `usage: ${setting.usage}` };
       if (value === undefined) return { action: "setting", key };
-      if (value !== "on" && value !== "off") return { error: `usage: ${this.usage}` };
-      return { action: "setting", key, value: value === "on" };
+      const parsed = setting.parse(value);
+      if (parsed === undefined) return { error: `usage: ${setting.usage}` };
+      return { action: "setting", key, value: parsed };
     },
   },
 
@@ -121,6 +133,20 @@ const COMMANDS = {
   },
 };
 
+// Each setting's `parse` turns the typed value into the stored one, or undefined if invalid
+const SETTINGS = {
+  "icon-lookup": {
+    usage: "/set icon-lookup [on|off]",
+    words: ["on", "off"],
+    parse: (value) => (value === "on" ? true : value === "off" ? false : undefined),
+  },
+  perpage: {
+    usage: "/set perpage [<n>|auto]",
+    words: ["auto"],
+    parse: (value) => (value === "auto" ? "auto" : /^\d+$/.test(value) && Number(value) >= 1 ? Number(value) : undefined),
+  },
+};
+
 function parseOptions(args, allowed, usage) {
   const options = new Set();
   for (const word of args.split(/\s+/).filter(Boolean)) {
@@ -137,10 +163,11 @@ function findCommand(name) {
 
 /**
  * Runs a parsed command against the saved sites. Returns one of:
- * `{ sites, message }` when the sites changed, `{ info }` for output that changes
+ * `{ sites, message }` when the sites changed (with the `site` added or moved, if any), `{ info }` for output that changes
  * nothing (like /help), `{ action }` for work the page has to do itself (`"export"`,
  * `"import"` with a `mode` of `"merge"` or `"replace"`, `"edit"` with the site's
- * `id`, or `"setting"` with a `key` and, to change it, a `value`), or `{ error }`.
+ * `id`, `"page"` with its 1-based `page`, or `"setting"` with a `key` and, to change
+ * it, a `value`), or `{ error }`.
  */
 export function runCommand(sites, { name, args }) {
   const command = findCommand(name);

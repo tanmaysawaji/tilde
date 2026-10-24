@@ -12,6 +12,7 @@
   --red: #f38ba8;
   --mauve: #cba6f7;
   --rosewater: #f5e0dc;
+  --pager-space: 52px; /* .pager's margin plus its height; tilde.js reserves it */
   --font: "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "JetBrains Mono", Consolas, monospace;
   color-scheme: dark;
 }
@@ -157,10 +158,13 @@ body { display: flex; justify-content: center; }
 }
 
 /* Shortcuts */
+/* tilde.js sets the columns for each page; this is the layout before it runs */
 .sites {
   margin-top: 58px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  justify-content: center;
+  align-content: start;
   gap: 10px;
 }
 
@@ -262,6 +266,76 @@ body { display: flex; justify-content: center; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Page list, centered under the tiles */
+.pager {
+  height: 28px;
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  font-size: 15px;
+}
+
+.pager[hidden] { display: none; }
+
+.pager button {
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--overlay1);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pager button:hover { color: var(--text); }
+
+.pager button[aria-current="page"] {
+  color: var(--sapphire);
+  font-weight: 700;
+}
+
+.pager button:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.pager button.drop-target {
+  outline: 2px dashed var(--mauve);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+/* While dragging a tile, holding it beside the grid flips the page */
+.flip-zone {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--mauve);
+  font-size: 32px;
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.flip-zone.left {
+  left: 0;
+  background: linear-gradient(to right, rgba(203, 166, 247, 0.1), transparent);
+}
+
+.flip-zone.right {
+  right: 0;
+  background: linear-gradient(to left, rgba(203, 166, 247, 0.1), transparent);
+}
+
+.flip-zone.shown { display: flex; }
+.flip-zone.armed { opacity: 1; }
 
 /* Add and edit panel, drawn like a tmux popup */
 .panel {
@@ -391,5 +465,5 @@ body { display: flex; justify-content: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site, .tile .edit, .output.fading { transition: none; }
+  .site, .tile .edit, .output.fading, .flip-zone { transition: none; }
 }
