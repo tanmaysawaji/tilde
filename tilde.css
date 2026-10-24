@@ -1,3 +1,18 @@
+/* Bundled, so the look doesn't depend on which fonts are installed (license in fonts/OFL.txt) */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: block;
+}
+
 /* Catppuccin Mocha, matched to the terminal (Crust background) */
 :root {
   --crust: #11111b;
@@ -13,7 +28,7 @@
   --mauve: #cba6f7;
   --rosewater: #f5e0dc;
   --pager-space: 52px; /* .pager's margin plus its height; tilde.js reserves it */
-  --font: "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "JetBrains Mono", Consolas, monospace;
+  --font: "JetBrains Mono", Consolas, monospace;
   color-scheme: dark;
 }
 
@@ -52,9 +67,12 @@ body { display: flex; justify-content: center; }
   font-weight: 700;
 }
 
-.cap::before {
-  content: "\e0b0";
-  color: var(--surface0);
+/* Powerline's arrow cap, drawn rather than taken from a Nerd Font, so it always fits the segment */
+.cap {
+  align-self: stretch;
+  width: 0.6em;
+  background: var(--surface0);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 .fill {
@@ -206,11 +224,14 @@ body { display: flex; justify-content: center; }
   border-radius: 8px;
   background: var(--surface0);
   color: var(--subtext0);
-  font-family: var(--font);
-  font-size: 14px;
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
+}
+
+.tile .edit svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tile:hover .edit,

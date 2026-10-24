@@ -75,6 +75,7 @@ async function recordCommand(text) {
   await write(HISTORY_KEY, commandHistory);
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
 const sitesEl = document.getElementById("sites");
 const pagerEl = document.getElementById("pager");
 let currentSites = [];
@@ -198,7 +199,7 @@ function siteTile(site, i) {
   const edit = document.createElement("button");
   edit.type = "button";
   edit.className = "edit";
-  edit.textContent = "\uf040";
+  edit.append(pencilIcon());
   edit.title = `Edit ${site.name}`;
   edit.setAttribute("aria-label", `Edit ${site.name}`);
   edit.addEventListener("click", () => openEditor(site));
@@ -209,6 +210,21 @@ function siteTile(site, i) {
   tile.dataset.id = site.id;
   tile.append(a, edit);
   return tile;
+}
+
+function pencilIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  for (const [name, value] of [["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "2"], ["stroke-linejoin", "round"], ["stroke-linecap", "round"]]) {
+    svg.setAttribute(name, value);
+  }
+  for (const d of ["M4 20l1.2-4.6L15.8 4.8a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z", "M13.5 7l3.5 3.5"]) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 function addTile() {
