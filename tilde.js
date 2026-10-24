@@ -92,7 +92,7 @@ storage?.onChanged.addListener((changes) => {
 
 const output = document.getElementById("output");
 const FADE_DELAY_MS = 3000;
-const FADE_MS = 400; // matches the .output.fading transition in newtab.css
+const FADE_MS = 400; // matches the .output.fading transition in tilde.css
 let fadeTimers = [];
 
 function showOutput(text, kind) {
