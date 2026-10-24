@@ -67,3 +67,14 @@ test("importSites won't replace everything with nothing", () => {
   assert.match(importSites([github], [{ url: "bad" }], "replace").error, /nothing was replaced/);
   assert.equal(importSites([github], [], "merge").message, "imported 0 sites");
 });
+
+test("importSites carries icons and where they came from", () => {
+  const withIcon = { id: "d", name: "Docs", url: "https://docs.example/", icon: "data:image/png;base64,A", iconSource: "duckduckgo" };
+  const { sites } = importSites([], [withIcon], "merge", ids());
+  assert.deepEqual([sites[0].icon, sites[0].iconSource], ["data:image/png;base64,A", "duckduckgo"]);
+});
+
+test("readBackup upgrades a version 1 backup", () => {
+  const v1 = JSON.stringify({ app: "tilde", version: 1, sites: [{ id: "a", name: "A", url: "https://a.com/", icon: "icons/a.png" }] });
+  assert.equal(readBackup(v1).sites[0].iconSource, "custom");
+});

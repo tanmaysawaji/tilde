@@ -280,23 +280,10 @@ body { display: flex; justify-content: center; }
 .panel form { padding: 20px 22px; }
 
 .panel-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   margin: 0 0 18px;
   color: var(--sapphire);
   font-size: 15px;
 }
-
-.panel-title .icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--crust);
-}
-
-.panel-title .icon img { width: 20px; height: 20px; }
-.panel-title .icon .letter { font-size: 16px; }
 
 .row {
   display: grid;
@@ -322,6 +309,27 @@ body { display: flex; justify-content: center; }
 .row input:focus { border-color: var(--mauve); }
 .row input::placeholder { color: var(--surface2); }
 
+.icon-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-field .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--crust);
+}
+
+.icon-field .icon img { width: 20px; height: 20px; }
+.icon-field .icon .letter { font-size: 16px; }
+
+.icon-field .icon.auto {
+  color: var(--overlay1);
+  font-size: 11px;
+}
+
 .panel-error {
   min-height: 22px;
   margin: 4px 0 10px;
@@ -339,7 +347,7 @@ body { display: flex; justify-content: center; }
 
 .panel-actions .spacer { flex: 1; }
 
-.panel-actions button {
+.panel button {
   padding: 6px 14px;
   border: 1px solid var(--surface0);
   border-radius: 8px;
@@ -349,9 +357,14 @@ body { display: flex; justify-content: center; }
   cursor: pointer;
 }
 
-.panel-actions button:focus-visible {
+.panel button:focus-visible {
   outline: 2px solid var(--mauve);
   outline-offset: 2px;
+}
+
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .panel-actions .primary {

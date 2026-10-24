@@ -34,7 +34,9 @@ test("defaultName uses the main part of the domain", () => {
 
 test("addSite appends a normalized site with a default name", () => {
   const result = addSite([], { url: "github.com" }, ids());
-  assert.deepEqual(result.site, { id: "id1", name: "Github", url: "https://github.com/", icon: null });
+  assert.deepEqual(result.site, {
+    id: "id1", name: "Github", url: "https://github.com/", icon: null, iconSource: null, iconCheckedAt: null,
+  });
   assert.deepEqual(result.sites, [result.site]);
 });
 
@@ -78,8 +80,8 @@ test("migrate imports legacy links on first run", () => {
   assert.deepEqual(data, {
     version: SCHEMA_VERSION,
     sites: [
-      { id: "id1", name: "Gmail", url: "https://mail.google.com/", icon: null },
-      { id: "id2", name: "GitHub", url: "https://github.com/", icon: "icons/gh.png" },
+      { id: "id1", name: "Gmail", url: "https://mail.google.com/", icon: null, iconSource: null, iconCheckedAt: null },
+      { id: "id2", name: "GitHub", url: "https://github.com/", icon: "icons/gh.png", iconSource: "custom", iconCheckedAt: null },
     ],
   });
 });
@@ -95,9 +97,30 @@ test("migrate leaves current data alone, even if it's empty", () => {
   assert.equal(changed, false);
 });
 
+test("migrate upgrades version 1, marking hand-set icons as custom", () => {
+  const v1 = {
+    version: 1,
+    sites: [
+      { id: "a", name: "Gmail", url: "https://mail.google.com/", icon: null },
+      { id: "b", name: "GitHub", url: "https://github.com/", icon: "icons/gh.png" },
+    ],
+  };
+  const { data, changed } = migrate(v1);
+  assert.equal(changed, true);
+  assert.deepEqual(data, {
+    version: 2,
+    sites: [
+      { id: "a", name: "Gmail", url: "https://mail.google.com/", icon: null, iconSource: null, iconCheckedAt: null },
+      { id: "b", name: "GitHub", url: "https://github.com/", icon: "icons/gh.png", iconSource: "custom", iconCheckedAt: null },
+    ],
+  });
+});
+
 test("migrate refuses data it can't read", () => {
   assert.throws(() => migrate({ version: SCHEMA_VERSION + 1, sites: [] }), /newer version/);
   assert.throws(() => migrate({ sites: "?" }), /doesn't recognize/);
+  assert.throws(() => migrate({ version: 1, sites: "?" }), /doesn't recognize/);
+  assert.throws(() => migrate({ version: 0, sites: [] }), /doesn't recognize/);
 });
 
 test("addSite needs a URL", () => {
@@ -113,7 +136,9 @@ const twoSites = () => {
 
 test("updateSite changes the name and URL in place", () => {
   const result = updateSite(twoSites(), "gh", { url: "gitlab.com", name: " Code " });
-  assert.deepEqual(result.site, { id: "gh", name: "Code", url: "https://gitlab.com/", icon: null });
+  assert.deepEqual(result.site, {
+    id: "gh", name: "Code", url: "https://gitlab.com/", icon: null, iconSource: null, iconCheckedAt: null,
+  });
   assert.deepEqual(result.sites.map((s) => s.id), ["gh", "gm"]);
 });
 
@@ -157,4 +182,43 @@ test("moveSite returns the same list when nothing moves", () => {
   assert.equal(moveSite(sites, "b", 1), sites);
   assert.equal(moveSite(sites, "a", -5), sites);
   assert.equal(moveSite(sites, "zz", 0), sites);
+});
+
+const png = "data:image/png;base64,AAAA";
+
+test("addSite keeps an icon's source, defaulting to custom", () => {
+  assert.equal(addSite([], { url: "a.com", icon: png }).site.iconSource, "custom");
+  assert.equal(addSite([], { url: "a.com", icon: png, iconSource: "favicon" }).site.iconSource, "favicon");
+  assert.equal(addSite([], { url: "a.com", icon: png, iconSource: "weird" }).site.iconSource, "custom");
+});
+
+test("addSite only accepts images and relative paths as icons", () => {
+  assert.equal(addSite([], { url: "a.com", icon: "icons/a.png" }).site.icon, "icons/a.png");
+  for (const icon of ["https://evil.example/pixel.gif", "//evil.example/p.gif", "javascript:alert(1)", " ", 7]) {
+    const { site } = addSite([], { url: "a.com", icon });
+    assert.equal(site.icon, null, String(icon));
+    assert.equal(site.iconSource, null);
+  }
+});
+
+const iconSite = (iconSource) => ({
+  id: "x", name: "X", url: "https://x.com/", icon: iconSource ? png : null, iconSource, iconCheckedAt: 5,
+});
+
+test("updateSite drops a looked-up icon when the URL changes", () => {
+  const { site } = updateSite([iconSite("favicon")], "x", { url: "y.com", name: "X" });
+  assert.deepEqual([site.icon, site.iconSource, site.iconCheckedAt], [null, null, null]);
+});
+
+test("updateSite keeps the icon when only the name changes, and a custom one always", () => {
+  assert.equal(updateSite([iconSite("favicon")], "x", { url: "x.com", name: "Y" }).site.icon, png);
+  assert.equal(updateSite([iconSite("custom")], "x", { url: "y.com", name: "X" }).site.icon, png);
+});
+
+test("updateSite sets and resets a custom icon", () => {
+  const set = updateSite([iconSite("favicon")], "x", { url: "x.com", name: "X", customIcon: "data:image/png;base64,BBBB" });
+  assert.deepEqual([set.site.icon, set.site.iconSource], ["data:image/png;base64,BBBB", "custom"]);
+  const reset = updateSite([iconSite("custom")], "x", { url: "x.com", name: "X", customIcon: null });
+  assert.deepEqual([reset.site.icon, reset.site.iconSource], [null, null]);
+  assert.equal(updateSite([iconSite(null)], "x", { url: "x.com", customIcon: "https://a.com/i.png" }).error, "that icon isn't an image");
 });

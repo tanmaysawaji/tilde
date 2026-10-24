@@ -11,7 +11,8 @@ export function parseCommand(text) {
   return { name: name.toLowerCase(), args: args.trim() };
 }
 
-// Listed in the order /help shows them and autocomplete prefers them
+// Listed in the order /help shows them and autocomplete prefers them. A command's
+// `suggest(previous)` lists the words autocomplete may offer after the `previous` ones.
 const COMMANDS = {
   add: {
     usage: "/add <url> [name]",
@@ -67,6 +68,23 @@ const COMMANDS = {
     },
   },
 
+  set: {
+    usage: "/set icon-lookup [on|off]",
+    summary: "look up missing icons on DuckDuckGo (off by default)",
+    suggest(previous) {
+      if (previous.length === 0) return ["icon-lookup"];
+      return previous.length === 1 && previous[0] === "icon-lookup" ? ["on", "off"] : [];
+    },
+    run(sites, args) {
+      const [key, value, ...extra] = args.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!key || extra.length) return { error: `usage: ${this.usage}` };
+      if (key !== "icon-lookup") return { error: `unknown setting: ${key}` };
+      if (value === undefined) return { action: "setting", key };
+      if (value !== "on" && value !== "off") return { error: `usage: ${this.usage}` };
+      return { action: "setting", key, value: value === "on" };
+    },
+  },
+
   export: {
     usage: "/export",
     summary: "download your sites as a backup file",
@@ -79,6 +97,9 @@ const COMMANDS = {
   import: {
     usage: "/import [--merge|--replace]",
     summary: "load sites from a backup file (merges by default)",
+    suggest(previous) {
+      return previous.some((w) => w.startsWith("--")) ? [] : ["--merge", "--replace"];
+    },
     run(sites, args) {
       const parsed = parseOptions(args, ["merge", "replace"], this.usage);
       if (parsed.error) return parsed;
@@ -118,8 +139,8 @@ function findCommand(name) {
  * Runs a parsed command against the saved sites. Returns one of:
  * `{ sites, message }` when the sites changed, `{ info }` for output that changes
  * nothing (like /help), `{ action }` for work the page has to do itself (`"export"`,
- * `"import"` with a `mode` of `"merge"` or `"replace"`, or `"edit"` with the site's
- * `id`), or `{ error }`.
+ * `"import"` with a `mode` of `"merge"` or `"replace"`, `"edit"` with the site's
+ * `id`, or `"setting"` with a `key` and, to change it, a `value`), or `{ error }`.
  */
 export function runCommand(sites, { name, args }) {
   const command = findCommand(name);
@@ -128,9 +149,10 @@ export function runCommand(sites, { name, args }) {
 }
 
 /**
- * Suggests a completion for what's typed in the prompt: a command name (`/a` → `/add `)
- * or, for commands that take one, a site name (`/rm gi` → `/rm Github`). Returns the
- * full completed text, which always extends `text` apart from letter case, or null.
+ * Suggests a completion for what's typed in the prompt: a command name (`/a` → `/add `),
+ * a site name for commands that take one (`/rm gi` → `/rm Github`), or a word the
+ * command accepts (`/import --r` → `/import --replace`). Returns the full completed
+ * text, which always extends `text` apart from letter case, or null.
  */
 export function complete(text, sites) {
   const match = text.match(/^\/(\S*)(\s+(.*))?$/s);
@@ -145,8 +167,19 @@ export function complete(text, sites) {
     return "/" + found + (takesArgs ? " " : "");
   }
 
-  if (!arg || !findCommand(name)?.takesSiteName) return null;
-  const wanted = arg.toLowerCase();
-  const site = sites.find((s) => s.name.length > arg.length && s.name.toLowerCase().startsWith(wanted));
-  return site ? text.slice(0, text.length - arg.length) + site.name : null;
+  const command = findCommand(name);
+  if (!arg || !command) return null;
+  if (command.takesSiteName) {
+    const wanted = arg.toLowerCase();
+    const site = sites.find((s) => s.name.length > arg.length && s.name.toLowerCase().startsWith(wanted));
+    return site ? text.slice(0, text.length - arg.length) + site.name : null;
+  }
+  if (!command.suggest) return null;
+
+  const words = arg.split(/\s+/);
+  const last = words.pop();
+  if (!last) return null;
+  const typed = last.toLowerCase();
+  const found = command.suggest(words.map((w) => w.toLowerCase())).find((w) => w.startsWith(typed) && w !== typed);
+  return found ? text.slice(0, text.length - last.length) + found : null;
 }

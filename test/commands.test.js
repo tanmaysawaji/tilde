@@ -45,6 +45,7 @@ test("/help lists every command in aligned columns", () => {
     "/rm <name>                   remove a site",
     "/mv <name> <position>        move a site to a position (1 is first)",
     "/edit <name>                 edit a site's name or URL",
+    "/set icon-lookup [on|off]    look up missing icons on DuckDuckGo (off by default)",
     "/export                      download your sites as a backup file",
     "/import [--merge|--replace]  load sites from a backup file (merges by default)",
     "/help                        list the commands",
@@ -62,6 +63,7 @@ test("complete finishes command names, adding a space when args follow", () => {
   assert.equal(complete("/a", sites), "/add ");
   assert.equal(complete("/R", sites), "/rm ");
   assert.equal(complete("/m", sites), "/mv ");
+  assert.equal(complete("/s", sites), "/set ");
   assert.equal(complete("/he", sites), "/help");
   assert.equal(complete("/e", sites), "/edit ");
   assert.equal(complete("/ex", sites), "/export");
@@ -140,4 +142,35 @@ test("/mv refuses bad positions, names, and usage", () => {
   assert.equal(runCommand(sites, parseCommand("/mv github first")).error, "not a position: first (1 is first)");
   assert.equal(runCommand(sites, parseCommand("/mv nope 1")).error, "no site named nope");
   assert.equal(runCommand(sites, parseCommand("/mv github")).error, "usage: /mv <name> <position>");
+});
+
+test("/set icon-lookup reads or changes the setting", () => {
+  assert.deepEqual(runCommand([], parseCommand("/set icon-lookup")), { action: "setting", key: "icon-lookup" });
+  assert.deepEqual(runCommand([], parseCommand("/set Icon-Lookup ON")), { action: "setting", key: "icon-lookup", value: true });
+  assert.deepEqual(runCommand([], parseCommand("/set icon-lookup off")), { action: "setting", key: "icon-lookup", value: false });
+});
+
+test("/set refuses unknown settings and values", () => {
+  assert.equal(runCommand([], parseCommand("/set")).error, "usage: /set icon-lookup [on|off]");
+  assert.equal(runCommand([], parseCommand("/set colour blue")).error, "unknown setting: colour");
+  assert.equal(runCommand([], parseCommand("/set icon-lookup maybe")).error, "usage: /set icon-lookup [on|off]");
+  assert.equal(runCommand([], parseCommand("/set icon-lookup on now")).error, "usage: /set icon-lookup [on|off]");
+});
+
+test("complete finishes the words a command accepts", () => {
+  assert.equal(complete("/set i", sites), "/set icon-lookup");
+  assert.equal(complete("/SET I", sites), "/SET icon-lookup");
+  assert.equal(complete("/set icon-lookup o", sites), "/set icon-lookup on");
+  assert.equal(complete("/set icon-lookup of", sites), "/set icon-lookup off");
+  assert.equal(complete("/import --r", sites), "/import --replace");
+  assert.equal(complete("/import -", sites), "/import --merge");
+});
+
+test("complete offers no word that doesn't fit", () => {
+  assert.equal(complete("/set ", sites), null);
+  assert.equal(complete("/set x", sites), null);
+  assert.equal(complete("/set icon-lookup on", sites), null);
+  assert.equal(complete("/set other o", sites), null);
+  assert.equal(complete("/import --merge --", sites), null);
+  assert.equal(complete("/export x", sites), null);
 });

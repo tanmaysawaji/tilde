@@ -2,6 +2,7 @@ import { addSite, migrate, moveSite, updateSite } from "./sites.js";
 import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
 import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
+import { applyIcon, duckduckgoIconUrl, sitesNeedingIcons } from "./icons.js";
 
 const LETTER_COLORS = ["#74c7ec", "#cba6f7", "#fab387", "#a6e3a1", "#f5c2e7", "#89b4fa", "#f9e2af", "#94e2d5"];
 const hasExtensionApi = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL;
@@ -40,6 +41,22 @@ async function loadData() {
   const { data, changed } = migrate(await read(SITES_KEY), typeof LINKS !== "undefined" ? LINKS : []);
   if (changed) await write(SITES_KEY, data);
   return data;
+}
+
+let siteQueue = Promise.resolve();
+
+// Every read-change-write of the sites runs through here, one at a time, on freshly read
+// data, so two changes (a move and a background icon lookup, say) can't overwrite each other
+function withSites(task) {
+  const run = siteQueue.then(async () => task(await loadData()));
+  siteQueue = run.catch(() => {});
+  return run;
+}
+
+async function saveSites(data, sites, { findIcons = true } = {}) {
+  await write(SITES_KEY, { ...data, sites });
+  renderSites(sites);
+  if (findIcons) lookUpIcons();
 }
 
 let commandHistory = [];
@@ -110,21 +127,12 @@ function addTile() {
 
 const DRAG_TYPE = "application/x-tilde-site";
 let dropTarget = null;
-let reorderQueue = Promise.resolve();
 
-// Moves run one after another, each on freshly read sites, so quick repeats (holding
-// Alt+→) don't work from a stale order
 function reorder(change) {
-  reorderQueue = reorderQueue.then(async () => {
-    try {
-      const data = await loadData();
-      const sites = change(data.sites);
-      if (sites !== data.sites) await saveSites(data, sites);
-    } catch (err) {
-      showOutput(err.message, "error");
-    }
-  });
-  return reorderQueue;
+  return withSites(async (data) => {
+    const sites = change(data.sites);
+    if (sites !== data.sites) await saveSites(data, sites);
+  }).catch((err) => showOutput(err.message, "error"));
 }
 
 function setDropTarget(el) {
@@ -190,11 +198,7 @@ function siteIcon(site, i) {
   const icon = document.createElement("span");
   icon.className = "icon";
 
-  const src = site.icon
-    ? site.icon
-    : hasExtensionApi
-      ? chrome.runtime.getURL("/_favicon/?pageUrl=" + encodeURIComponent(site.url) + "&size=64")
-      : null;
+  const src = site.icon ?? (hasExtensionApi ? faviconUrl(site.url) : null);
 
   if (src) {
     const img = document.createElement("img");
@@ -216,7 +220,105 @@ function letterFor(name, i) {
   return s;
 }
 
-loadData().then((data) => renderSites(data.sites), (err) => showOutput(err.message, "error"));
+const ICON_SIZE = 64;
+// The favicon cache can't know this address, so it answers with its generic globe
+const UNKNOWN_SITE = "https://tilde.invalid/";
+const DUCKDUCKGO = { origins: ["https://icons.duckduckgo.com/*"] };
+const hasPermissionsApi = hasExtensionApi && chrome.permissions;
+let lookingUp = false;
+let lookUpAgain = null;
+
+function faviconUrl(pageUrl) {
+  return chrome.runtime.getURL("/_favicon/?pageUrl=" + encodeURIComponent(pageUrl) + "&size=" + ICON_SIZE);
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("that file isn't an image Brave can read"));
+    img.src = src;
+  });
+}
+
+// Draws into a fixed square, so icons compare pixel for pixel and uploads stay small
+function toPng(img) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = ICON_SIZE;
+  const width = img.naturalWidth || ICON_SIZE;
+  const height = img.naturalHeight || ICON_SIZE;
+  const scale = Math.min(ICON_SIZE / width, ICON_SIZE / height);
+  const [w, h] = [width * scale, height * scale];
+  canvas.getContext("2d").drawImage(img, (ICON_SIZE - w) / 2, (ICON_SIZE - h) / 2, w, h);
+  return canvas.toDataURL("image/png");
+}
+
+async function blobToPng(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    return toPng(await loadImage(url));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function duckduckgoOn() {
+  return hasPermissionsApi ? chrome.permissions.contains(DUCKDUCKGO) : false;
+}
+
+async function lookUpIcon(siteUrl) {
+  const images = await Promise.all([loadImage(faviconUrl(siteUrl)), loadImage(faviconUrl(UNKNOWN_SITE))]);
+  const [favicon, globe] = images.map(toPng);
+  if (favicon !== globe) return { icon: favicon, iconSource: "favicon" };
+  if (await duckduckgoOn()) {
+    const icon = await fetchDuckDuckGoIcon(siteUrl);
+    if (icon) return { icon, iconSource: "duckduckgo" };
+  }
+  return { icon: null, iconSource: "globe" };
+}
+
+async function fetchDuckDuckGoIcon(siteUrl) {
+  try {
+    const response = await fetch(duckduckgoIconUrl(siteUrl));
+    return response.ok ? await blobToPng(await response.blob()) : null;
+  } catch {
+    return null;
+  }
+}
+
+function lookUpIcons(options = {}) {
+  if (!hasExtensionApi) return;
+  if (lookingUp) {
+    lookUpAgain = { recheckGlobe: Boolean(lookUpAgain?.recheckGlobe || options.recheckGlobe) };
+    return;
+  }
+  lookingUp = true;
+  (async () => {
+    try {
+      const data = await loadData();
+      for (const site of sitesNeedingIcons(data.sites, Date.now(), options)) {
+        const found = await lookUpIcon(site.url).catch(() => ({ icon: null, iconSource: "globe" }));
+        await withSites(async (fresh) => {
+          const sites = applyIcon(fresh.sites, site.id, site.url, found, Date.now());
+          if (sites !== fresh.sites) await saveSites(fresh, sites, { findIcons: false });
+        });
+      }
+    } catch (err) {
+      showOutput(err.message, "error");
+    }
+    lookingUp = false;
+    if (lookUpAgain) {
+      const again = lookUpAgain;
+      lookUpAgain = null;
+      lookUpIcons(again);
+    }
+  })();
+}
+
+loadData().then((data) => {
+  renderSites(data.sites);
+  lookUpIcons();
+}, (err) => showOutput(err.message, "error"));
 loadHistory().then((stored) => (commandHistory = stored));
 
 // Keeps other open tabs in step when one of them changes the sites or history
@@ -282,26 +384,26 @@ async function runPromptCommand(text, command) {
   try {
     await recordCommand(text);
     // Read fresh rather than reuse what's rendered, in case another tab changed the sites
-    const data = await loadData();
-    const result = runCommand(data.sites, command);
+    const { result, sites } = await withSites(async (data) => {
+      const result = runCommand(data.sites, command);
+      if (result.sites) await saveSites(data, result.sites);
+      return { result, sites: data.sites };
+    });
     if (result.action) {
       q.value = "";
       updateGhost();
       if (result.action === "export") awaitExport();
       else if (result.action === "import") awaitImportFile(result.mode);
+      else if (result.action === "setting") await changeSetting(result);
       else {
         clearOutput();
-        openEditor(data.sites.find((s) => s.id === result.id));
+        openEditor(sites.find((s) => s.id === result.id));
       }
       return;
     }
     if (result.error) {
       showOutput(result.error, "error");
       return;
-    }
-    if (result.sites) {
-      await write(SITES_KEY, { ...data, sites: result.sites });
-      renderSites(result.sites);
     }
     q.value = "";
     updateGhost();
@@ -352,7 +454,7 @@ async function exportSites() {
 
 function awaitImportFile(mode) {
   awaitClick("drop a backup file on the page, or ", "browse…", async () => {
-    const file = await pickFile();
+    const file = await pickFile(".json,application/json");
     if (file) importFile(file, mode);
   });
   pending = { action: "import", mode };
@@ -361,14 +463,15 @@ function awaitImportFile(mode) {
 async function importFile(file, mode) {
   try {
     const backup = readBackup(await file.text());
-    const data = await loadData();
-    const result = backup.error ? backup : importSites(data.sites, backup.sites, mode);
+    const result = await withSites(async (data) => {
+      const result = backup.error ? backup : importSites(data.sites, backup.sites, mode);
+      if (result.sites) await saveSites(data, result.sites);
+      return result;
+    });
     if (result.error) {
       showOutput(result.error, "error");
       return;
     }
-    await write(SITES_KEY, { ...data, sites: result.sites });
-    renderSites(result.sites);
     showOutput(result.message, "ok");
   } catch (err) {
     showOutput(err.message, "error");
@@ -397,11 +500,47 @@ function clearDropReady() {
   document.documentElement.classList.remove("drop-ready");
 }
 
-function pickFile() {
+async function changeSetting({ value }) {
+  if (!hasPermissionsApi) {
+    showOutput("settings only work inside the extension", "error");
+    return;
+  }
+  const on = await duckduckgoOn();
+  if (value === undefined) {
+    showOutput(`icon lookup is ${on ? "on" : "off"}`, "ok");
+  } else if (value === on) {
+    showOutput(`icon lookup is already ${on ? "on" : "off"}`, "ok");
+  } else if (!value) {
+    await chrome.permissions.remove(DUCKDUCKGO);
+    showOutput("icon lookup is off", "ok");
+  } else {
+    awaitPermission();
+  }
+}
+
+// The permission prompt comes from a click, like the file dialogs, so it isn't refused
+// for lack of a user gesture after the command's own awaits
+function awaitPermission() {
+  awaitClick("tilde needs permission to fetch icons from icons.duckduckgo.com: ", "allow…", async () => {
+    try {
+      if (!(await chrome.permissions.request(DUCKDUCKGO))) {
+        showOutput("permission not given, so icon lookup stays off", "error");
+        return;
+      }
+      showOutput("icon lookup is on", "ok");
+      lookUpIcons({ recheckGlobe: true });
+    } catch (err) {
+      showOutput(err.message, "error");
+    }
+  });
+  pending = { action: "permission" };
+}
+
+function pickFile(accept) {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,application/json";
+    input.accept = accept;
     input.addEventListener("change", () => resolve(input.files[0] ?? null));
     input.addEventListener("cancel", () => resolve(null));
     input.click();
@@ -415,46 +554,85 @@ const editorUrl = document.getElementById("editor-url");
 const editorName = document.getElementById("editor-name");
 const editorError = document.getElementById("editor-error");
 const editorDelete = document.getElementById("editor-delete");
+const editorIcon = document.getElementById("editor-icon");
+const editorReset = document.getElementById("editor-reset");
 let editing = null;
 let returnFocus = null;
+// undefined leaves the icon as is, null goes back to the looked-up one, a string is a custom image
+let newIcon;
 
 /** Opens the panel to edit `site`, or to add a new site when `site` is null. */
 function openEditor(site) {
   editing = site;
+  newIcon = undefined;
   returnFocus = document.activeElement;
-  const index = site ? currentSites.findIndex((s) => s.id === site.id) : -1;
-  editorTitle.replaceChildren(...(site ? [siteIcon(site, Math.max(index, 0)), `Edit ${site.name}`] : ["Add a site"]));
+  editorTitle.textContent = site ? `Edit ${site.name}` : "Add a site";
   editorUrl.value = site?.url ?? "";
   editorName.value = site?.name ?? "";
   editorError.textContent = "";
   editorDelete.hidden = !site;
   resetDelete();
+  renderEditorIcon();
   editor.showModal();
   (site ? editorName : editorUrl).focus();
 }
+
+function renderEditorIcon() {
+  const index = Math.max(currentSites.findIndex((s) => s.id === editing?.id), 0);
+  let preview = null;
+  if (typeof newIcon === "string") preview = { name: editorName.value, ...editing, icon: newIcon };
+  else if (editing && newIcon === null) preview = { ...editing, icon: editing.iconSource === "custom" ? null : editing.icon };
+  else if (editing) preview = editing;
+
+  if (preview) {
+    editorIcon.replaceChildren(siteIcon(preview, index));
+  } else {
+    const auto = document.createElement("span");
+    auto.className = "icon auto";
+    auto.textContent = "auto";
+    editorIcon.replaceChildren(auto);
+  }
+  editorReset.disabled = !(typeof newIcon === "string" || (newIcon === undefined && editing?.iconSource === "custom"));
+}
+
+document.getElementById("editor-upload").addEventListener("click", async () => {
+  const file = await pickFile("image/*");
+  if (!file) return;
+  try {
+    newIcon = await blobToPng(file);
+    editorError.textContent = "";
+    renderEditorIcon();
+  } catch (err) {
+    editorError.textContent = err.message;
+  }
+});
+
+editorReset.addEventListener("click", () => {
+  newIcon = null;
+  renderEditorIcon();
+});
 
 function resetDelete() {
   editorDelete.classList.remove("confirming");
   editorDelete.textContent = "Delete";
 }
 
-async function saveSites(data, sites) {
-  await write(SITES_KEY, { ...data, sites });
-  renderSites(sites);
-}
-
 editorForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    const data = await loadData();
     const fields = { url: editorUrl.value, name: editorName.value };
-    const result = editing ? updateSite(data.sites, editing.id, fields) : addSite(data.sites, fields);
+    const result = await withSites(async (data) => {
+      const result = editing
+        ? updateSite(data.sites, editing.id, { ...fields, customIcon: newIcon })
+        : addSite(data.sites, { ...fields, icon: newIcon ?? undefined });
+      if (result.sites) await saveSites(data, result.sites);
+      return result;
+    });
     if (result.error) {
       editorError.textContent = result.error;
       return;
     }
     const message = editing ? `saved ${result.site.name}` : `added ${result.site.name} → ${result.site.url}`;
-    await saveSites(data, result.sites);
     editor.close();
     showOutput(message, "ok");
   } catch (err) {
@@ -469,9 +647,8 @@ editorDelete.addEventListener("click", async () => {
     return;
   }
   try {
-    const data = await loadData();
-    const name = editing.name;
-    await saveSites(data, data.sites.filter((s) => s.id !== editing.id));
+    const { id, name } = editing;
+    await withSites((data) => saveSites(data, data.sites.filter((s) => s.id !== id)));
     editor.close();
     showOutput(`removed ${name}`, "ok");
   } catch (err) {

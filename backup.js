@@ -50,9 +50,13 @@ export function importSites(current, incoming, mode, makeId) {
   let sites = mode === "replace" ? [] : current;
   let skipped = 0;
   for (const site of incoming) {
-    const result = typeof site?.url === "string"
-      ? addSite(sites, { url: site.url, name: typeof site.name === "string" ? site.name : "", icon: site.icon }, makeId)
-      : { error: "no url" };
+    const fields = {
+      url: site?.url,
+      name: typeof site?.name === "string" ? site.name : "",
+      icon: site?.icon,
+      iconSource: site?.iconSource,
+    };
+    const result = typeof site?.url === "string" ? addSite(sites, fields, makeId) : { error: "no url" };
     if (result.sites) sites = result.sites;
     else skipped++;
   }
