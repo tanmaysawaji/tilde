@@ -51,3 +51,17 @@ export function flipDirection(x, { left, right, windowWidth, minWidth }) {
   if (x > Math.min(right, windowWidth - minWidth)) return 1;
   return 0;
 }
+
+/**
+ * The page (0-based) a key press switches to, or null if it isn't a page shortcut.
+ * Digits 1–9 work on their own outside text fields, and anywhere with Ctrl on macOS
+ * (where Option+digit types characters) or Alt elsewhere (where Ctrl+digit switches
+ * tabs). Shift, Cmd, and the other system's modifier are left to the browser.
+ */
+export function pageForKey({ code, altKey, ctrlKey, metaKey, shiftKey }, { isMac, inTextField }) {
+  const digit = /^Digit([1-9])$/.exec(code);
+  if (!digit || shiftKey || metaKey) return null;
+  const [modifier, other] = isMac ? [ctrlKey, altKey] : [altKey, ctrlKey];
+  if (other || (!modifier && inTextField)) return null;
+  return Number(digit[1]) - 1;
+}

@@ -3,11 +3,12 @@ import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
 import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
 import { applyIcon, duckduckgoIconUrl, sitesNeedingIcons } from "./icons.js";
-import { balancedShape, endOfPage, fitGrid, flipDirection, pageCount, pageOf, tilesPerPage } from "./pages.js";
+import { balancedShape, endOfPage, fitGrid, flipDirection, pageCount, pageForKey, pageOf, tilesPerPage } from "./pages.js";
 import { DEFAULT_SETTINGS, readSettings } from "./settings.js";
 
 const LETTER_COLORS = ["#74c7ec", "#cba6f7", "#fab387", "#a6e3a1", "#f5c2e7", "#89b4fa", "#f9e2af", "#94e2d5"];
 const hasExtensionApi = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL;
+const IS_MAC = /mac/i.test(navigator.userAgentData?.platform ?? navigator.platform);
 
 // Prompt fill line, like Starship's $fill
 document.getElementById("fill").textContent = "─".repeat(400);
@@ -1132,11 +1133,11 @@ const COMMON_TLDS = new Set(["com", "org", "net", "io", "dev", "app", "ai", "co"
 // "/" jumps to the search bar, Esc clears it
 document.addEventListener("keydown", (e) => {
   if (panelOpen()) return;
-  const digit = /^Digit([1-9])$/.exec(e.code);
-  const inTextField = document.activeElement?.matches("input, textarea, [contenteditable]");
-  if (digit && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.altKey || !inTextField)) {
+  const inTextField = Boolean(document.activeElement?.matches("input, textarea, [contenteditable]"));
+  const page = pageForKey(e, { isMac: IS_MAC, inTextField });
+  if (page !== null) {
     e.preventDefault();
-    goToPage(Number(digit[1]) - 1);
+    goToPage(page);
     return;
   }
   if (e.key === "/" && document.activeElement !== q) {

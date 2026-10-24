@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { balancedShape, endOfPage, fitGrid, flipDirection, pageCount, pageOf, tilesPerPage } from "../pages.js";
+import { balancedShape, endOfPage, fitGrid, flipDirection, pageCount, pageForKey, pageOf, tilesPerPage } from "../pages.js";
 import { moveSite } from "../sites.js";
 
 test("fitGrid counts the columns and rows that fit", () => {
@@ -64,4 +64,36 @@ test("flipDirection keeps a zone at the window edges when the tiles reach them",
   assert.equal(flipDirection(48, edges), 0);
   assert.equal(flipDirection(1553, edges), 1);
   assert.equal(flipDirection(1552, edges), 0);
+});
+
+const key = (code, mods = {}) => ({ code, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods });
+const windows = (inTextField) => ({ isMac: false, inTextField });
+const mac = (inTextField) => ({ isMac: true, inTextField });
+
+test("pageForKey uses Alt+digit anywhere outside macOS, and leaves Ctrl+digit to the browser", () => {
+  assert.equal(pageForKey(key("Digit3", { altKey: true }), windows(true)), 2);
+  assert.equal(pageForKey(key("Digit3", { ctrlKey: true }), windows(false)), null);
+  assert.equal(pageForKey(key("Digit3", { ctrlKey: true, altKey: true }), windows(false)), null);
+});
+
+test("pageForKey uses Ctrl+digit anywhere on macOS, and leaves Option and Cmd alone", () => {
+  assert.equal(pageForKey(key("Digit3", { ctrlKey: true }), mac(true)), 2);
+  assert.equal(pageForKey(key("Digit3", { altKey: true }), mac(true)), null);
+  assert.equal(pageForKey(key("Digit3", { altKey: true }), mac(false)), null);
+  assert.equal(pageForKey(key("Digit3", { metaKey: true }), mac(false)), null);
+});
+
+test("pageForKey takes plain digits only outside text fields", () => {
+  for (const system of [windows, mac]) {
+    assert.equal(pageForKey(key("Digit1"), system(false)), 0);
+    assert.equal(pageForKey(key("Digit9"), system(false)), 8);
+    assert.equal(pageForKey(key("Digit1"), system(true)), null);
+  }
+});
+
+test("pageForKey ignores other keys, 0, and Shift", () => {
+  assert.equal(pageForKey(key("Digit0"), windows(false)), null);
+  assert.equal(pageForKey(key("KeyA"), windows(false)), null);
+  assert.equal(pageForKey(key("Numpad1"), windows(false)), null);
+  assert.equal(pageForKey(key("Digit1", { shiftKey: true }), windows(false)), null);
 });
