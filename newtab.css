@@ -9,6 +9,7 @@
   --text: #cdd6f4;
   --sapphire: #74c7ec;
   --green: #a6e3a1;
+  --red: #f38ba8;
   --mauve: #cba6f7;
   --rosewater: #f5e0dc;
   --font: "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "JetBrains Mono", Consolas, monospace;
@@ -97,9 +98,27 @@ body { display: flex; justify-content: center; }
 
 #q::placeholder { color: var(--surface2); }
 
+/* Command output; its fixed height keeps the grid from jumping when it appears */
+.output {
+  margin: 8px 0 0;
+  min-height: 22px;
+  font-size: 15px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.output[data-kind="ok"] { color: var(--green); }
+.output[data-kind="error"] { color: var(--red); }
+
+.output.fading {
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
 /* Shortcuts */
 .sites {
-  margin-top: 88px;
+  margin-top: 58px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: 10px;
@@ -157,5 +176,5 @@ body { display: flex; justify-content: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site { transition: none; }
+  .site, .output.fading { transition: none; }
 }

@@ -4,5 +4,6 @@
   "version": "1.0",
   "description": "A personal new tab page with shortcuts and search.",
   "chrome_url_overrides": { "newtab": "newtab.html" },
-  "permissions": ["favicon", "search"]
+  "permissions": ["favicon", "search", "storage"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3UJuSAbv0c91fmVxSEVWF39q3oT/tbUVaBEKwD/UXiaNNHD0KDxvS4BqaxWDzMLup9YXe6Deq0DHy97cXEie58XTNR44/njzzrGZgR2oD1+flqOOuNmFCxbxNiCGyLNYbPJ+gwD+7NNPggx9smVKgTke6Pwwb4Ypw/XpQy6tHOw2PdXCkPUr8uehiO1CotHhwoxubOaE5rSLDbFO3P4rpOZkQui5ijI4qbFxvXY0VLsVfaEUrzPvq2fjYJGpNbLs4yMcDUW7USRdJVReFr0bTW7tM1Wob03lBNxc2C99hfoYDv5/hkYP41onYQv9DfoF1/3c1xlm2+J+pis6ir0eDQIDAQAB"
 }
