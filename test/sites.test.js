@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SCHEMA_VERSION, addSite, defaultName, findSiteByName, migrate, normalizeUrl, removeSite, updateSite } from "../sites.js";
+import { SCHEMA_VERSION, addSite, defaultName, findSiteByName, migrate, moveSite, normalizeUrl, removeSite, updateSite } from "../sites.js";
 
 const ids = () => {
   let n = 0;
@@ -137,4 +137,24 @@ test("updateSite refuses clashes with other sites and missing sites", () => {
 test("findSiteByName ignores case and surrounding spaces", () => {
   assert.equal(findSiteByName(twoSites(), " gmail ").id, "gm");
   assert.equal(findSiteByName(twoSites(), "nope"), undefined);
+});
+
+const abcd = () => ["a", "b", "c", "d"].map((id) => ({ id, name: id, url: `https://${id}.com/`, icon: null }));
+const order = (sites) => sites.map((s) => s.id).join("");
+
+test("moveSite takes the target's place, shifting the rest over", () => {
+  assert.equal(order(moveSite(abcd(), "a", 2)), "bcad");
+  assert.equal(order(moveSite(abcd(), "d", 1)), "adbc");
+});
+
+test("moveSite clamps to the ends", () => {
+  assert.equal(order(moveSite(abcd(), "b", -1)), "bacd");
+  assert.equal(order(moveSite(abcd(), "b", Infinity)), "acdb");
+});
+
+test("moveSite returns the same list when nothing moves", () => {
+  const sites = abcd();
+  assert.equal(moveSite(sites, "b", 1), sites);
+  assert.equal(moveSite(sites, "a", -5), sites);
+  assert.equal(moveSite(sites, "zz", 0), sites);
 });

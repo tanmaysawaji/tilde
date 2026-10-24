@@ -88,6 +88,18 @@ export function removeSite(sites, name) {
   return { sites: sites.filter((s) => s !== site), site };
 }
 
+/**
+ * Moves the site with this `id` to `toIndex` (0-based, clamped to the list), shifting
+ * the sites in between over. Returns a new array, or the same one if nothing moved.
+ */
+export function moveSite(sites, id, toIndex) {
+  const from = sites.findIndex((s) => s.id === id);
+  if (from === -1) return sites;
+  const to = Math.min(Math.max(toIndex, 0), sites.length - 1);
+  if (from === to) return sites;
+  return sites.toSpliced(from, 1).toSpliced(to, 0, sites[from]);
+}
+
 /** The site with this name (case-insensitive), or undefined. */
 export function findSiteByName(sites, name) {
   const wanted = name.trim().toLowerCase();

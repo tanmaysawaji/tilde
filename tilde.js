@@ -1,4 +1,4 @@
-import { addSite, migrate, updateSite } from "./sites.js";
+import { addSite, migrate, moveSite, updateSite } from "./sites.js";
 import { complete, parseCommand, runCommand } from "./commands.js";
 import { addToHistory, browseHistory } from "./history.js";
 import { backupFileName, createBackup, importSites, readBackup } from "./backup.js";
@@ -85,6 +85,7 @@ function siteTile(site, i) {
 
   const tile = document.createElement("div");
   tile.className = "tile";
+  tile.dataset.id = site.id;
   tile.append(a, edit);
   return tile;
 }
@@ -106,6 +107,84 @@ function addTile() {
   button.addEventListener("click", () => openEditor(null));
   return button;
 }
+
+const DRAG_TYPE = "application/x-tilde-site";
+let dropTarget = null;
+let reorderQueue = Promise.resolve();
+
+// Moves run one after another, each on freshly read sites, so quick repeats (holding
+// Alt+→) don't work from a stale order
+function reorder(change) {
+  reorderQueue = reorderQueue.then(async () => {
+    try {
+      const data = await loadData();
+      const sites = change(data.sites);
+      if (sites !== data.sites) await saveSites(data, sites);
+    } catch (err) {
+      showOutput(err.message, "error");
+    }
+  });
+  return reorderQueue;
+}
+
+function setDropTarget(el) {
+  dropTarget?.classList.remove("drop-target");
+  dropTarget = el?.classList.contains("dragging") ? null : el;
+  dropTarget?.classList.add("drop-target");
+}
+
+sitesEl.addEventListener("dragstart", (e) => {
+  const tile = e.target.closest(".tile");
+  if (!tile) return;
+  e.dataTransfer.setData(DRAG_TYPE, tile.dataset.id);
+  tile.classList.add("dragging");
+});
+
+sitesEl.addEventListener("dragover", (e) => {
+  const target = e.target.closest(".tile, .add-tile");
+  if (!target || !e.dataTransfer.types.includes(DRAG_TYPE)) {
+    setDropTarget(null);
+    return;
+  }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  setDropTarget(target);
+});
+
+sitesEl.addEventListener("dragleave", (e) => {
+  if (!sitesEl.contains(e.relatedTarget)) setDropTarget(null);
+});
+
+sitesEl.addEventListener("drop", (e) => {
+  const target = e.target.closest(".tile, .add-tile");
+  const id = e.dataTransfer.getData(DRAG_TYPE);
+  if (!target || !id) return;
+  e.preventDefault();
+  const targetId = target.dataset.id;
+  reorder((sites) => {
+    if (!targetId) return moveSite(sites, id, Infinity);
+    const to = sites.findIndex((s) => s.id === targetId);
+    return to === -1 ? sites : moveSite(sites, id, to);
+  });
+});
+
+sitesEl.addEventListener("dragend", () => {
+  setDropTarget(null);
+  sitesEl.querySelector(".dragging")?.classList.remove("dragging");
+});
+
+sitesEl.addEventListener("keydown", async (e) => {
+  if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+  const tile = e.target.closest(".tile");
+  if (!tile) return;
+  // Alt+← is also the browser's Back
+  e.preventDefault();
+  const id = tile.dataset.id;
+  const delta = e.key === "ArrowLeft" ? -1 : 1;
+  const focused = e.target.classList.contains("edit") ? ".edit" : ".site";
+  await reorder((sites) => moveSite(sites, id, sites.findIndex((s) => s.id === id) + delta));
+  sitesEl.querySelector(`.tile[data-id="${CSS.escape(id)}"] ${focused}`)?.focus();
+});
 
 function siteIcon(site, i) {
   const icon = document.createElement("span");

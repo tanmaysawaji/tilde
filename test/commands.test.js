@@ -43,6 +43,7 @@ test("/help lists every command in aligned columns", () => {
   assert.equal(info, [
     "/add <url> [name]            save a site, optionally as [name]",
     "/rm <name>                   remove a site",
+    "/mv <name> <position>        move a site to a position (1 is first)",
     "/edit <name>                 edit a site's name or URL",
     "/export                      download your sites as a backup file",
     "/import [--merge|--replace]  load sites from a backup file (merges by default)",
@@ -60,6 +61,7 @@ test("complete finishes command names, adding a space when args follow", () => {
   assert.equal(complete("/", sites), "/add ");
   assert.equal(complete("/a", sites), "/add ");
   assert.equal(complete("/R", sites), "/rm ");
+  assert.equal(complete("/m", sites), "/mv ");
   assert.equal(complete("/he", sites), "/help");
   assert.equal(complete("/e", sites), "/edit ");
   assert.equal(complete("/ex", sites), "/export");
@@ -73,6 +75,8 @@ test("complete finishes site names for commands that take one", () => {
   assert.equal(complete("/rm gm", sites), "/rm Gmail");
   assert.equal(complete("/rm prime v", sites), "/rm Prime Video");
   assert.equal(complete("/edit gm", sites), "/edit Gmail");
+  assert.equal(complete("/mv pr", sites), "/mv Prime Video");
+  assert.equal(complete("/mv github 3", sites), null);
   assert.equal(complete("/RM  git", sites), "/RM  Github");
 });
 
@@ -108,4 +112,32 @@ test("/edit asks the page to open the panel for that site", () => {
   assert.deepEqual(runCommand(sites, parseCommand("/edit GITHUB")), { action: "edit", id: sites[0].id });
   assert.equal(runCommand(sites, parseCommand("/edit nope")).error, "no site named nope");
   assert.equal(runCommand(sites, parseCommand("/edit")).error, "usage: /edit <name>");
+});
+
+const fourSites = () => {
+  let sites = [];
+  for (const url of ["github.com", "mail.google.com", "primevideo.com"]) {
+    sites = runCommand(sites, parseCommand(`/add ${url}`)).sites;
+  }
+  return runCommand(sites, parseCommand("/add walmart.com Prime Video Deals")).sites;
+};
+
+test("/mv moves a site, with multi-word names and 1 as first", () => {
+  const result = runCommand(fourSites(), parseCommand("/mv prime video deals 1"));
+  assert.deepEqual(result.sites.map((s) => s.name), ["Prime Video Deals", "Github", "Google", "Primevideo"]);
+  assert.equal(result.message, "moved Prime Video Deals to 1");
+});
+
+test("/mv past the end moves to the end", () => {
+  const result = runCommand(fourSites(), parseCommand("/mv github 99"));
+  assert.equal(result.sites.at(-1).name, "Github");
+  assert.equal(result.message, "moved Github to 4");
+});
+
+test("/mv refuses bad positions, names, and usage", () => {
+  const sites = fourSites();
+  assert.equal(runCommand(sites, parseCommand("/mv github 0")).error, "not a position: 0 (1 is first)");
+  assert.equal(runCommand(sites, parseCommand("/mv github first")).error, "not a position: first (1 is first)");
+  assert.equal(runCommand(sites, parseCommand("/mv nope 1")).error, "no site named nope");
+  assert.equal(runCommand(sites, parseCommand("/mv github")).error, "usage: /mv <name> <position>");
 });

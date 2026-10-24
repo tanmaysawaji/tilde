@@ -1,4 +1,4 @@
-import { addSite, findSiteByName, removeSite } from "./sites.js";
+import { addSite, findSiteByName, moveSite, removeSite } from "./sites.js";
 
 /**
  * Splits prompt text into a command. Returns null unless the text starts with `/`;
@@ -34,6 +34,24 @@ const COMMANDS = {
       const result = removeSite(sites, args);
       if (result.error) return result;
       return { sites: result.sites, message: `removed ${result.site.name}` };
+    },
+  },
+
+  mv: {
+    usage: "/mv <name> <position>",
+    summary: "move a site to a position (1 is first)",
+    takesSiteName: true,
+    run(sites, args) {
+      const match = args.match(/^(.+?)\s+(\S+)$/s);
+      if (!match) return { error: `usage: ${this.usage}` };
+      const [, name, positionText] = match;
+      if (!/^\d+$/.test(positionText) || Number(positionText) < 1) {
+        return { error: `not a position: ${positionText} (1 is first)` };
+      }
+      const site = findSiteByName(sites, name);
+      if (!site) return { error: `no site named ${name}` };
+      const moved = moveSite(sites, site.id, Number(positionText) - 1);
+      return { sites: moved, message: `moved ${site.name} to ${moved.indexOf(site) + 1}` };
     },
   },
 

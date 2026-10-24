@@ -221,6 +221,14 @@ body { display: flex; justify-content: center; }
   cursor: pointer;
 }
 
+.tile.dragging { opacity: 0.4; }
+
+.tile.drop-target .site,
+.add-tile.drop-target {
+  outline: 2px dashed var(--mauve);
+  outline-offset: 2px;
+}
+
 .add-tile .icon {
   color: var(--overlay1);
   font-size: 34px;
