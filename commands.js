@@ -97,6 +97,15 @@ const COMMANDS = {
     },
   },
 
+  settings: {
+    usage: "/settings",
+    summary: "open the settings panel",
+    run(sites, args) {
+      if (args) return { error: `usage: ${this.usage}` };
+      return { action: "settings" };
+    },
+  },
+
   export: {
     usage: "/export",
     summary: "download your sites as a backup file",
@@ -166,8 +175,8 @@ function findCommand(name) {
  * `{ sites, message }` when the sites changed (with the `site` added or moved, if any), `{ info }` for output that changes
  * nothing (like /help), `{ action }` for work the page has to do itself (`"export"`,
  * `"import"` with a `mode` of `"merge"` or `"replace"`, `"edit"` with the site's
- * `id`, `"page"` with its 1-based `page`, or `"setting"` with a `key` and, to change
- * it, a `value`), or `{ error }`.
+ * `id`, `"page"` with its 1-based `page`, `"setting"` with a `key` and, to change it, a
+ * `value`, or `"settings"` to open the settings panel), or `{ error }`.
  */
 export function runCommand(sites, { name, args }) {
   const command = findCommand(name);

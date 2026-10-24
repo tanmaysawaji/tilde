@@ -30,6 +30,12 @@
     <nav class="sites" id="sites" aria-label="Shortcuts"></nav>
     <nav class="pager" id="pager" aria-label="Pages" hidden></nav>
   </main>
+  <button type="button" class="settings-gear" id="settings-open" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor">
+      <circle cx="12" cy="12" r="6.5" stroke-width="3"/>
+      <circle cx="12" cy="12" r="8.5" stroke-width="3" stroke-dasharray="3.34 3.34"/>
+    </svg>
+  </button>
   <div class="flip-zone left" id="flip-left" aria-hidden="true">‹</div>
   <div class="flip-zone right" id="flip-right" aria-hidden="true">›</div>
   <div id="drag-holder" hidden></div>
@@ -56,7 +62,50 @@
       </div>
     </form>
   </dialog>
-  <script src="links.js"></script>
+  <dialog class="panel" id="settings" aria-labelledby="settings-title">
+    <form id="settings-form" autocomplete="off">
+      <h2 class="panel-title" id="settings-title">Settings</h2>
+      <fieldset class="group">
+        <legend>Tiles per page</legend>
+        <label class="choice">
+          <input type="radio" name="perpage" id="perpage-auto"> Fit to screen <span class="hint" id="perpage-fit"></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="perpage" id="perpage-fixed">
+          <input type="number" id="perpage-number" min="1" step="1" aria-label="Tiles per page"> per page
+        </label>
+        <p class="hint" id="perpage-note"></p>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Icons</legend>
+        <label class="choice">
+          <input type="checkbox" role="switch" id="icon-lookup"> Look up missing icons on DuckDuckGo
+        </label>
+        <p class="hint">DuckDuckGo sees the domain of sites Brave has no icon for.</p>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Backup</legend>
+        <p class="hint">These happen right away; Save is only for the settings above.</p>
+        <div class="backup-row">
+          <button type="button" id="settings-export">Export</button>
+          <span class="hint">Downloads your sites and settings as a file.</span>
+        </div>
+        <div class="backup-row">
+          <label class="choice"><input type="radio" name="import-mode" value="merge" checked> Add to my sites</label>
+          <label class="choice"><input type="radio" name="import-mode" value="replace"> Replace my sites</label>
+        </div>
+        <div class="backup-row">
+          <button type="button" id="settings-import">Import…</button>
+        </div>
+      </fieldset>
+      <p class="panel-status" id="settings-status" role="status"></p>
+      <div class="panel-actions">
+        <span class="spacer"></span>
+        <button type="button" id="settings-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="tilde.js"></script>
 </body>
 </html>

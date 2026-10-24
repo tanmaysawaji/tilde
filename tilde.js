@@ -41,7 +41,7 @@ async function write(key, value) {
 }
 
 async function loadData() {
-  const { data, changed } = migrate(await read(SITES_KEY), typeof LINKS !== "undefined" ? LINKS : []);
+  const { data, changed } = migrate(await read(SITES_KEY));
   if (changed) await write(SITES_KEY, data);
   return data;
 }
@@ -180,7 +180,7 @@ window.addEventListener("wheel", (e) => {
   const startsGesture = wheelTimer === null;
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => (wheelTimer = null), 200);
-  if (!startsGesture || editor.open || e.ctrlKey || e.deltaY === 0) return;
+  if (!startsGesture || panelOpen() || e.ctrlKey || e.deltaY === 0) return;
   goToPage(currentPage + Math.sign(e.deltaY));
 }, { passive: true });
 
@@ -604,6 +604,10 @@ async function runPromptCommand(text, command) {
       if (result.action === "export") awaitExport();
       else if (result.action === "import") awaitImportFile(result.mode);
       else if (result.action === "setting") await changeSetting(result);
+      else if (result.action === "settings") {
+        clearOutput();
+        openSettings();
+      }
       else if (result.action === "page") {
         goToPage(result.page - 1);
         showOutput(`page ${result.page} of ${pagesTotal()}`, "ok");
@@ -656,11 +660,15 @@ function awaitExport() {
   pending = { action: "export" };
 }
 
+async function exportBackup() {
+  const backup = createBackup(await loadData(), settings);
+  download(backup.fileName, backup.json);
+  return backup.message;
+}
+
 async function exportSites() {
   try {
-    const backup = createBackup(await loadData(), settings);
-    download(backup.fileName, backup.json);
-    showOutput(backup.message, "ok");
+    showOutput(await exportBackup(), "ok");
   } catch (err) {
     showOutput(err.message, "error");
   }
@@ -674,7 +682,8 @@ function awaitImportFile(mode) {
   pending = { action: "import", mode };
 }
 
-async function importFile(file, mode) {
+/** Imports a backup file; resolves to `{ message }` or `{ error }`. */
+async function importBackupFile(file, mode) {
   try {
     const backup = readBackup(await file.text());
     const result = await withSites(async (data) => {
@@ -682,15 +691,17 @@ async function importFile(file, mode) {
       if (result.sites) await saveSites(data, result.sites);
       return result;
     });
-    if (result.error) {
-      showOutput(result.error, "error");
-      return;
-    }
-    if (mode === "replace" && backup.settings) await saveSettings(backup.settings);
-    showOutput(result.message, "ok");
+    if (!result.error && mode === "replace" && backup.settings) await saveSettings(backup.settings);
+    return result;
   } catch (err) {
-    showOutput(err.message, "error");
+    return { error: err.message };
   }
+}
+
+async function importFile(file, mode) {
+  const result = await importBackupFile(file, mode);
+  if (result.error) showOutput(result.error, "error");
+  else showOutput(result.message, "ok");
 }
 
 async function saveSettings(next) {
@@ -908,6 +919,140 @@ editor.addEventListener("close", () => {
   (returnFocus?.isConnected ? returnFocus : q).focus();
 });
 
+const settingsPanel = document.getElementById("settings");
+const settingsForm = document.getElementById("settings-form");
+const perPageAuto = document.getElementById("perpage-auto");
+const perPageFixed = document.getElementById("perpage-fixed");
+const perPageNumber = document.getElementById("perpage-number");
+const perPageFit = document.getElementById("perpage-fit");
+const perPageNote = document.getElementById("perpage-note");
+const iconLookupSwitch = document.getElementById("icon-lookup");
+const settingsImport = document.getElementById("settings-import");
+const settingsStatus = document.getElementById("settings-status");
+let settingsReturnFocus = null;
+let lookupWasOn = false;
+
+function panelOpen() {
+  return editor.open || settingsPanel.open;
+}
+
+async function openSettings() {
+  settingsReturnFocus = document.activeElement;
+  const auto = settings.perPage === "auto";
+  perPageAuto.checked = auto;
+  perPageFixed.checked = !auto;
+  perPageNumber.value = auto ? "" : String(settings.perPage);
+  perPageNumber.placeholder = String(layout.fit);
+  lookupWasOn = await duckduckgoOn();
+  iconLookupSwitch.checked = lookupWasOn;
+  iconLookupSwitch.disabled = !hasPermissionsApi;
+  showSettingsStatus("", "ok");
+  resetReplace();
+  updatePerPageHints();
+  settingsPanel.showModal();
+}
+
+function showSettingsStatus(text, kind) {
+  settingsStatus.textContent = text;
+  settingsStatus.dataset.kind = kind;
+}
+
+function updatePerPageHints() {
+  perPageFit.textContent = `(${layout.fit} fit right now)`;
+  const n = Number(perPageNumber.value);
+  perPageNote.textContent = perPageFixed.checked && n > layout.fit
+    ? `Only ${layout.fit} fit right now, so you'll see ${layout.fit} until the window is bigger.`
+    : "";
+}
+
+perPageNumber.addEventListener("input", () => {
+  perPageFixed.checked = true;
+  updatePerPageHints();
+});
+for (const radio of [perPageAuto, perPageFixed]) radio.addEventListener("change", updatePerPageHints);
+
+settingsForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  let perPage = "auto";
+  if (perPageFixed.checked) {
+    perPage = Number(perPageNumber.value);
+    if (!Number.isInteger(perPage) || perPage < 1) {
+      showSettingsStatus("Tiles per page has to be a whole number from 1", "error");
+      return;
+    }
+  }
+  // Brave only shows its permission prompt in answer to a click, so ask before awaiting anything
+  const wantLookup = iconLookupSwitch.checked;
+  let lookupChange = Promise.resolve(wantLookup);
+  if (hasPermissionsApi && wantLookup !== lookupWasOn) {
+    lookupChange = wantLookup ? chrome.permissions.request(DUCKDUCKGO) : chrome.permissions.remove(DUCKDUCKGO).then(() => false);
+  }
+  try {
+    const lookupOn = await lookupChange;
+    await saveSettings({ ...settings, perPage });
+    if (wantLookup && !lookupOn) {
+      iconLookupSwitch.checked = false;
+      lookupWasOn = false;
+      showSettingsStatus("Permission not given, so icon lookup stays off. The rest was saved.", "error");
+      return;
+    }
+    if (lookupOn && !lookupWasOn) lookUpIcons({ recheckGlobe: true });
+    settingsPanel.close();
+    showOutput("settings saved", "ok");
+  } catch (err) {
+    showSettingsStatus(err.message, "error");
+  }
+});
+
+document.getElementById("settings-export").addEventListener("click", async () => {
+  try {
+    showSettingsStatus(capitalize(await exportBackup()), "ok");
+  } catch (err) {
+    showSettingsStatus(capitalize(err.message), "error");
+  }
+});
+
+function importMode() {
+  return settingsForm.elements["import-mode"].value;
+}
+
+function resetReplace() {
+  settingsImport.classList.remove("confirming");
+  settingsImport.textContent = "Import…";
+}
+
+settingsImport.addEventListener("click", async () => {
+  if (importMode() === "replace" && !settingsImport.classList.contains("confirming")) {
+    settingsImport.classList.add("confirming");
+    settingsImport.textContent = "Really replace?";
+    return;
+  }
+  resetReplace();
+  const file = await pickFile(".json,application/json");
+  if (!file) return;
+  const result = await importBackupFile(file, importMode());
+  if (result.error) showSettingsStatus(capitalize(result.error), "error");
+  else showSettingsStatus(capitalize(result.message), "ok");
+});
+
+settingsImport.addEventListener("blur", resetReplace);
+for (const radio of settingsForm.elements["import-mode"]) radio.addEventListener("change", resetReplace);
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+document.getElementById("settings-open").addEventListener("click", openSettings);
+document.getElementById("settings-cancel").addEventListener("click", () => settingsPanel.close());
+
+settingsPanel.addEventListener("click", (e) => {
+  if (e.target === settingsPanel) settingsPanel.close();
+});
+
+settingsPanel.addEventListener("close", () => {
+  (settingsReturnFocus?.isConnected ? settingsReturnFocus : q).focus();
+});
+
 const ghostTyped = document.getElementById("ghost-typed");
 const ghostRest = document.getElementById("ghost-rest");
 
@@ -970,7 +1115,7 @@ const COMMON_TLDS = new Set(["com", "org", "net", "io", "dev", "app", "ai", "co"
 
 // "/" jumps to the search bar, Esc clears it
 document.addEventListener("keydown", (e) => {
-  if (editor.open) return;
+  if (panelOpen()) return;
   const digit = /^Digit([1-9])$/.exec(e.code);
   const inTextField = document.activeElement?.matches("input, textarea, [contenteditable]");
   if (digit && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.altKey || !inTextField)) {

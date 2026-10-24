@@ -459,11 +459,118 @@ body { display: flex; justify-content: center; }
   color: var(--crust);
 }
 
+/* Settings */
+.settings-gear {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--overlay1);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.settings-gear svg {
+  width: 26px;
+  height: 26px;
+}
+
+.settings-gear:hover,
+.settings-gear:focus-visible {
+  opacity: 1;
+  background: var(--mantle);
+  color: var(--text);
+}
+
+.settings-gear:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: 2px;
+}
+
+.group {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.group legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--overlay1);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.choice input[type="radio"],
+.choice input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--mauve);
+}
+
+.choice input[type="number"] {
+  width: 7ch;
+  padding: 4px 8px;
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--crust);
+  color: var(--text);
+  font: inherit;
+}
+
+.choice input[type="number"]:focus { border-color: var(--mauve); }
+.choice input[type="number"]::placeholder { color: var(--surface2); }
+
+.hint {
+  margin: 0 0 6px;
+  color: var(--overlay1);
+  font-size: 13px;
+}
+
+.backup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+
+.backup-row .choice { margin-bottom: 0; }
+
+#settings-import.confirming {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--crust);
+}
+
+.panel-status {
+  min-height: 22px;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.panel-status[data-kind="ok"] { color: var(--green); }
+.panel-status[data-kind="error"] { color: var(--red); }
+
 @media (max-width: 560px) {
   .now .date { display: none; }
   .shell { margin-top: 14vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site, .tile .edit, .output.fading, .flip-zone { transition: none; }
+  .site, .tile .edit, .output.fading, .flip-zone, .settings-gear { transition: none; }
 }

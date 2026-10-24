@@ -138,21 +138,13 @@ export function findSiteByName(sites, name) {
 }
 
 /**
- * Brings stored data up to the current schema.
- * With nothing stored, the starting list is imported from `legacyLinks` (the old
- * `links.js` entries) if given, otherwise it is empty. Returns `{ data, changed }`,
- * where `changed` means the result should be saved. Throws on data it can't read, such
- * as data from a newer version of tilde, so the caller doesn't overwrite it.
+ * Brings stored data up to the current schema; with nothing stored, it starts empty.
+ * Returns `{ data, changed }`, where `changed` means the result should be saved. Throws
+ * on data it can't read, such as data from a newer version of tilde, so the caller
+ * doesn't overwrite it.
  */
-export function migrate(stored, legacyLinks, makeId = () => crypto.randomUUID()) {
-  if (stored == null) {
-    let sites = [];
-    for (const link of legacyLinks ?? []) {
-      const result = addSite(sites, link, makeId);
-      if (result.sites) sites = result.sites;
-    }
-    return { data: { version: SCHEMA_VERSION, sites }, changed: true };
-  }
+export function migrate(stored) {
+  if (stored == null) return { data: { version: SCHEMA_VERSION, sites: [] }, changed: true };
   if (stored.version > SCHEMA_VERSION) {
     throw new Error("saved sites are from a newer version of tilde");
   }

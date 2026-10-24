@@ -70,29 +70,14 @@ test("removeSite reports a missing name", () => {
   assert.match(removeSite([], "Github").error, /no site named Github/);
 });
 
-test("migrate imports legacy links on first run", () => {
-  const legacy = [
-    { name: "Gmail", url: "https://mail.google.com/" },
-    { name: "GitHub", url: "https://github.com/", icon: "icons/gh.png" },
-  ];
-  const { data, changed } = migrate(undefined, legacy, ids());
-  assert.equal(changed, true);
-  assert.deepEqual(data, {
-    version: SCHEMA_VERSION,
-    sites: [
-      { id: "id1", name: "Gmail", url: "https://mail.google.com/", icon: null, iconSource: null, iconCheckedAt: null },
-      { id: "id2", name: "GitHub", url: "https://github.com/", icon: "icons/gh.png", iconSource: "custom", iconCheckedAt: null },
-    ],
-  });
-});
-
-test("migrate starts empty without legacy links", () => {
-  assert.deepEqual(migrate(undefined, undefined).data, { version: SCHEMA_VERSION, sites: [] });
+test("migrate starts empty when nothing is stored", () => {
+  assert.deepEqual(migrate(undefined), { data: { version: SCHEMA_VERSION, sites: [] }, changed: true });
+  assert.deepEqual(migrate(null).data, { version: SCHEMA_VERSION, sites: [] });
 });
 
 test("migrate leaves current data alone, even if it's empty", () => {
   const stored = { version: SCHEMA_VERSION, sites: [] };
-  const { data, changed } = migrate(stored, [{ name: "Gmail", url: "https://mail.google.com/" }]);
+  const { data, changed } = migrate(stored);
   assert.equal(data, stored);
   assert.equal(changed, false);
 });

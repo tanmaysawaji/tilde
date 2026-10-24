@@ -47,6 +47,7 @@ test("/help lists every command in aligned columns", () => {
     "/edit <name>                 edit a site's name or URL",
     "/page <n>                    switch to a page",
     "/set <setting> [value]       change a setting: icon-lookup on|off, perpage <n>|auto",
+    "/settings                    open the settings panel",
     "/export                      download your sites as a backup file",
     "/import [--merge|--replace]  load sites from a backup file (merges by default)",
     "/help                        list the commands",
@@ -193,4 +194,11 @@ test("/page takes a page number from 1", () => {
   for (const bad of ["", "0", "two", "1 2"]) {
     assert.equal(runCommand([], parseCommand(`/page ${bad}`)).error, "usage: /page <n>", bad);
   }
+});
+
+test("/settings opens the panel and takes nothing after it", () => {
+  assert.deepEqual(runCommand([], parseCommand("/settings")), { action: "settings" });
+  assert.equal(runCommand([], parseCommand("/settings now")).error, "usage: /settings");
+  assert.equal(complete("/se", sites), "/set ");
+  assert.equal(complete("/sett", sites), "/settings");
 });
